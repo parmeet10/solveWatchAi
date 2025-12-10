@@ -8,9 +8,10 @@
     "start": "node backend/src/server.js",
     "dev": "nodemon backend/src/server.js",
     "dev:frontend": "cd frontend && npm run dev",
+    "dev:python": "cd python-service && if [ -d venv ]; then venv/bin/python app.py; else echo '⚠️  Python venv not found. Please run: cd python-service && python3 -m venv venv && source venv/bin/activate && pip install -r requirements.txt'; exit 1; fi",
     "build": "cd frontend && npm install && npm run build",
-    "install:all": "npm install && cd frontend && npm install",
-    "start:all": "npm run dev & npm run dev:frontend",
+    "install:all": "npm install && cd frontend && npm install && cd ../python-service && if [ ! -d venv ]; then echo '📦 Creating Python virtual environment...' && if command -v python3.12 &> /dev/null; then python3.12 -m venv venv && echo '✅ Virtual environment created with Python 3.12'; elif command -v python3.11 &> /dev/null; then python3.11 -m venv venv && echo '✅ Virtual environment created with Python 3.11'; else python3 -m venv venv && echo '⚠️  Using Python 3.13 (some packages may have compatibility issues)'; fi; fi && if ! command -v ffmpeg &> /dev/null; then echo '⚠️  FFmpeg not found. Installing via Homebrew...' && brew install ffmpeg || echo '⚠️  Please install FFmpeg manually: brew install ffmpeg'; fi && echo '📦 Installing Python dependencies...' && venv/bin/pip install --upgrade pip setuptools wheel && venv/bin/pip install -r requirements.txt && echo '✅ All dependencies installed!'",
+    "start:all": "concurrently --names \"PYTHON,NODE,FRONTEND\" --prefix-colors \"yellow,blue,green\" \"npm run dev:python\" \"npm run dev\" \"npm run dev:frontend\"",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [
@@ -25,6 +26,7 @@
   "license": "ISC",
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
+    "axios": "^1.6.2",
     "clipboardy": "^5.0.1",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
@@ -38,6 +40,12 @@
     "nodemon": "^3.1.9",
     "openai": "^6.10.0",
     "screenshot-desktop": "^1.15.1",
-    "tesseract.js": "^6.0.0"
+    "form-data": "^4.0.0",
+    "socket.io": "^4.7.2",
+    "tesseract.js": "^6.0.0",
+    "ws": "^8.14.2"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
   }
 }

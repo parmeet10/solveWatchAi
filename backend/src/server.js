@@ -2,9 +2,11 @@ import http from 'http';
 import https from 'https';
 import fs from 'fs';
 import path from 'path';
+import { Server } from 'socket.io';
 import app from './app.js';
 import screenshotMonitorService from './services/screenshot-monitor.service.js';
 import clipboardMonitorService from './services/clipboard-monitor.service.js';
+import streamHandler from './sockets/streamHandler.js';
 import { CONFIG, getLocalIP } from './config/constants.js';
 
 // Start screenshot monitoring
@@ -43,6 +45,18 @@ if (fs.existsSync(certPath) && fs.existsSync(keyPath)) {
 
 // HTTP server
 httpServer = http.createServer(app);
+
+// Initialize Socket.io
+const io = new Server(httpServer, {
+  cors: {
+    origin: '*',
+    methods: ['GET', 'POST'],
+  },
+});
+
+// Setup WebSocket handlers
+new streamHandler(io);
+
 httpServer.listen(CONFIG.PORT, '0.0.0.0', () => {
   console.log(`\n✅ HTTP server is running!`);
   console.log(`📱 Access from MacBook: http://localhost:${CONFIG.PORT}`);

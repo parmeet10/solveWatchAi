@@ -1,0 +1,58 @@
+.transcriber-container {
+  background: white;
+  border-radius: 8px;
+  padding: 20px;
+  margin: 20px 0;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.transcriber-header {
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.transcriber-header h2 {
+  margin: 0 0 10px 0;
+  color: #333;
+}
+
+.transcriber-header p {
+  margin: 0;
+  color: #666;
+  font-size: 14px;
+}
+
+.transcriber-tabs {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+  border-bottom: 2px solid #eee;
+}
+
+.tab-button {
+  flex: 1;
+  padding: 12px 20px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 500;
+  color: #666;
+  border-bottom: 3px solid transparent;
+  transition: all 0.3s;
+}
+
+.tab-button:hover {
+  color: #2196f3;
+  background: #f5f5f5;
+}
+
+.tab-button.active {
+  color: #2196f3;
+  border-bottom-color: #2196f3;
+  background: #f5f5f5;
+}
+
+.transcriber-content {
+  min-height: 300px;
+}

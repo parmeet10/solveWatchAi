@@ -330,6 +330,23 @@ class AIService {
     }
   }
 
+  readAudioTranscriptionPromptFromFile() {
+    try {
+      const promptPath = path.join(
+        process.cwd(),
+        'backend',
+        'prompts',
+        'audio-transcription-prompt.txt',
+      );
+      return fs.readFileSync(promptPath, 'utf8').trim();
+    } catch (err) {
+      console.log(
+        'Warning: Could not read audio transcription prompt file, using default prompt',
+      );
+      return 'Extract questions from this audio transcription and provide comprehensive answers. If no questions are found, provide a summary of the content.';
+    }
+  }
+
   async askGpt(text) {
     this.reloadConfig();
     const systemPrompt = this.readPromptFromFile();
@@ -384,6 +401,27 @@ class AIService {
       {
         role: 'user',
         content: `Clipboard content:\n${clipboardContent}`,
+      },
+    ];
+
+    return await this.callAIWithFallback(messages, {
+      temperature: 0.7,
+      max_tokens: 2048,
+    });
+  }
+
+  async askGptTranscription(transcriptionText) {
+    this.reloadConfig();
+    const systemPrompt = this.readAudioTranscriptionPromptFromFile();
+
+    const messages = [
+      {
+        role: 'system',
+        content: systemPrompt,
+      },
+      {
+        role: 'user',
+        content: `Audio transcription:\n${transcriptionText}`,
       },
     ];
 

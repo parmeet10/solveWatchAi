@@ -7,6 +7,7 @@ solveWatchAi is an intelligent application that automatically monitors screensho
 ## ✨ Features
 
 ### Core Functionality
+
 - **🖼️ Automatic Screenshot Monitoring**: Monitors a designated screenshots directory and automatically processes new screenshots
 - **📋 Clipboard Monitoring**: Real-time clipboard monitoring with automatic processing of copied content
 - **🔍 OCR Text Extraction**: Extracts text from images using Tesseract.js
@@ -17,35 +18,48 @@ solveWatchAi is an intelligent application that automatically monitors screensho
 - **📱 Cross-Device Access**: Accessible from multiple devices on the same network
 
 ### Advanced Features
+
 - **🧠 Context-Aware Processing**: Maintains context between screenshots/clipboard entries for better analysis
 - **⚙️ Configurable API Keys**: Web-based UI for managing API keys without editing files
 - **🎯 Provider Priority**: Configure which AI providers to use and in what order
 - **🛡️ Error Handling**: Robust error handling with graceful degradation
 - **📊 Processing History**: View all processed screenshots and clipboard content with timestamps
+- **🎤 Speech-to-Text Transcription**: Upload audio files or stream live audio for real-time transcription using faster-whisper
 
 ## 🏗️ Architecture
 
-The application consists of two main components:
+The application consists of three main components:
 
-1. **Backend (Node.js/Express)**: 
+1. **Backend (Node.js/Express)**:
+
    - RESTful API server
    - Screenshot monitoring service
    - Clipboard monitoring service
    - OCR processing
    - AI service with multi-provider support
    - Email service
+   - WebSocket server for real-time transcription streaming
 
 2. **Frontend (React/Vite)**:
+
    - Modern web interface
    - Real-time data updates
    - API key configuration
    - Email configuration
    - Upload interface
+   - Speech-to-text transcription UI (file upload and live streaming)
+
+3. **Python Transcription Service (FastAPI)**:
+   - REST API for file transcription
+   - WebSocket for real-time streaming transcription
+   - faster-whisper integration with M1 GPU acceleration
+   - Voice Activity Detection (VAD)
 
 ## 📋 Prerequisites
 
 - **Node.js** (v16 or higher)
 - **npm** (v7 or higher)
+- **Python 3.8+** (for transcription service)
 - **Tesseract OCR Training Data**: The `eng.traineddata` file should be in the project root
 - **API Keys** (at least one):
   - OpenAI API key (optional)
@@ -53,6 +67,10 @@ The application consists of two main components:
   - Google Gemini API key (optional)
 - **Email Configuration** (optional, for email notifications):
   - Gmail account with App Password
+- **For Transcription** (optional):
+  - macOS M1/M2 (recommended for GPU acceleration) OR CUDA-capable GPU OR CPU
+  - At least 4GB RAM
+  - Internet connection (for downloading Whisper models)
 
 ## 🚀 Installation
 
@@ -103,6 +121,10 @@ PORT=4000
 HTTPS_PORT=8443
 FUNCTION_INTERVAL=5000
 SCREENSHOTS_PATH=/path/to/your/screenshots
+
+# Optional: Python Transcription Service Configuration
+PYTHON_SERVICE_URL=http://localhost:8000
+PYTHON_SERVICE_WS_URL=ws://localhost:8000
 ```
 
 ### 4. Configure Screenshots Directory
@@ -114,7 +136,32 @@ By default, the app monitors `/Users/parmeet1.0/Documents/screenshots`. You can 
 
 Make sure the directory exists or it will be created automatically.
 
-### 5. Build Frontend (Optional, for production)
+### 5. Setup Python Transcription Service (Optional)
+
+If you want to use the speech-to-text transcription feature:
+
+```bash
+# Navigate to python-service directory
+cd python-service
+
+# Create virtual environment
+python3 -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# (Optional) Configure environment
+cp .env.example .env
+# Edit .env if needed
+
+# Start the Python service
+python app.py
+```
+
+The Python service will run on port 8000 by default. See `python-service/README.md` for detailed setup instructions.
+
+### 6. Build Frontend (Optional, for production)
 
 ```bash
 npm run build
@@ -164,6 +211,7 @@ If HTTPS certificates (`cert.pem` and `key.pem`) are present, HTTPS will also be
 ### Initial Configuration
 
 1. **Configure API Keys**:
+
    - Click "🔑 Configure API Keys (Required)" button
    - Enter at least one API key (OpenAI, Groq, or Gemini)
    - Select which providers to enable
@@ -182,20 +230,55 @@ If HTTPS certificates (`cert.pem` and `key.pem`) are present, HTTPS will also be
 3. View results in the web interface
 
 **macOS Screenshot Tips**:
+
 - `Cmd + Shift + 3`: Full screen screenshot
 - `Cmd + Shift + 4`: Selection screenshot
 - Screenshots are saved to Desktop by default; move them to the monitored directory or change the default location
+
+### Using Speech-to-Text Transcription
+
+The application includes a speech-to-text transcription feature with two modes:
+
+#### File Upload Mode
+
+1. Navigate to the "🎤 Speech-to-Text Transcription" section in the web interface
+2. Click on the "📁 Upload File" tab
+3. Drag and drop an audio file (MP3, WAV, M4A, etc.) or click "Browse Files"
+4. Click "🚀 Upload & Transcribe"
+5. **Check the Node.js server terminal** for the transcription results
+
+**Supported formats:** MP3, WAV, M4A, MPEG, MP4, WebM (max 25MB)
+
+#### Live Streaming Mode
+
+1. Navigate to the "🎤 Speech-to-Text Transcription" section
+2. Click on the "🎙️ Live Transcription" tab
+3. Ensure the Python transcription service is running (port 8000)
+4. Click "🎙️ Start Recording" (grant microphone permissions if prompted)
+5. Speak into your microphone
+6. **Check the Node.js server terminal** for real-time transcription results
+7. Click "⏹️ Stop Recording" when finished
+
+**Note:** Transcriptions are logged to the server terminal, not displayed in the browser. This allows you to see all transcriptions in one place.
+
+**Requirements:**
+
+- Python transcription service must be running (see Setup section)
+- Microphone permissions granted (for live streaming)
+- Stable internet connection (for model download on first run)
 
 ### Using Clipboard Monitoring
 
 The application automatically monitors clipboard changes. You can:
 
 1. **Auto-Process Mode (Default)**:
+
    - Copy any text (Cmd+C / Ctrl+C)
    - Click anywhere on the web page or paste (Cmd+V)
    - The content will be automatically processed
 
 2. **Manual Process**:
+
    - Copy text
    - Click "Process Now" button
    - Or use keyboard shortcut: `Cmd+Shift+V` (Mac) or `Ctrl+Shift+V` (Windows/Linux)
@@ -215,6 +298,7 @@ The application automatically monitors clipboard changes. You can:
 ### Image Processing
 
 - `POST /api/upload` - Upload and process an image
+
   - Body: `multipart/form-data` with `image` field
   - Response: `{ success: boolean, message: string }`
 
@@ -227,16 +311,36 @@ The application automatically monitors clipboard changes. You can:
   - Body: `{ content: string }`
   - Response: `{ success: boolean, message: string }`
 
+### Transcription
+
+- `POST /api/transcribe` - Transcribe an uploaded audio file
+
+  - Body: `multipart/form-data` with `audio` field (MP3, WAV, M4A, etc.)
+  - Response: `{ success: boolean, message: string, filename: string }`
+  - Note: Transcription results are logged to the server terminal
+
+- WebSocket `/stream-transcribe` - Real-time streaming transcription
+  - Connect to `ws://localhost:4000/stream-transcribe`
+  - Events:
+    - `start_stream` - Start streaming session
+    - `audio_chunk` - Send audio chunk (base64 encoded)
+    - `end_stream` - End streaming session
+    - `transcription` - Receive transcription (for status updates)
+  - Note: Actual transcriptions are logged to the server terminal
+
 ### Configuration
 
 - `GET /api/config/keys` - Get API keys configuration
+
   - Response: `{ success: boolean, config: { keys, order, enabled } }`
 
 - `POST /api/config/keys` - Save API keys configuration
+
   - Body: `{ keys: object, order: array, enabled: array }`
   - Response: `{ success: boolean, message: string }`
 
 - `GET /api/config/email` - Get email configuration
+
   - Response: `{ success: boolean, config: { enabled, email } }`
 
 - `POST /api/config/email` - Save email configuration
@@ -246,6 +350,7 @@ The application automatically monitors clipboard changes. You can:
 ### Context Management
 
 - `GET /api/context-state` - Get context mode state
+
   - Response: `{ useContext: boolean }`
 
 - `POST /api/context-state` - Update context mode state
@@ -315,6 +420,7 @@ solveWatchAi/
 ## 🛠️ Technologies Used
 
 ### Backend
+
 - **Express.js** - Web framework
 - **Tesseract.js** - OCR text extraction
 - **OpenAI SDK** - OpenAI API integration
@@ -326,19 +432,30 @@ solveWatchAi/
 - **screenshot-desktop** - Screenshot capture utilities
 
 ### Frontend
+
 - **React** - UI framework
 - **Vite** - Build tool and dev server
+- **socket.io-client** - WebSocket client for real-time streaming
+
+### Python Transcription Service
+
+- **FastAPI** - Web framework
+- **faster-whisper** - Optimized Whisper implementation
+- **uvicorn** - ASGI server
+- **websockets** - WebSocket support
 
 ## ⚙️ Configuration Details
 
 ### API Keys Configuration
 
 API keys can be configured via:
+
 1. **Web UI** (Recommended): Use the "Configure API Keys" button
 2. **Environment Variables**: Set in `.env` file
 3. **Config File**: Edit `backend/config/api-keys.json` directly
 
 The configuration supports:
+
 - Multiple providers (OpenAI, Groq, Gemini)
 - Provider priority order
 - Enable/disable specific providers
@@ -347,11 +464,13 @@ The configuration supports:
 ### Email Configuration
 
 Email notifications require:
+
 - Gmail account
 - App Password (not regular password)
 - Enable "Less secure app access" or use App Passwords
 
 To get a Gmail App Password:
+
 1. Go to Google Account settings
 2. Security → 2-Step Verification (must be enabled)
 3. App passwords → Generate new app password
@@ -360,6 +479,7 @@ To get a Gmail App Password:
 ### Context Mode
 
 Context mode maintains conversation context between screenshots/clipboard entries:
+
 - Enabled via API endpoint or service method
 - Uses previous AI response as context for next analysis
 - Useful for multi-step problem solving
@@ -369,32 +489,57 @@ Context mode maintains conversation context between screenshots/clipboard entrie
 ### Common Issues
 
 1. **"No AI providers configured"**
+
    - Solution: Configure at least one API key via the web UI
 
 2. **OCR not working**
+
    - Solution: Ensure `eng.traineddata` is in the project root
+
+3. **Transcription service not working**
+
+   - Solution: Ensure Python service is running on port 8000
+   - Check: `curl http://localhost:8000/health`
+   - Verify Python dependencies are installed: `pip install -r python-service/requirements.txt`
+   - For M1 Mac: Ensure `WHISPER_DEVICE=mps` in `python-service/.env`
+
+4. **WebSocket connection fails for streaming**
+
+   - Solution: Check that both Node.js backend and Python service are running
+   - Verify firewall settings allow connections on ports 4000 and 8000
+   - Check browser console for connection errors
+
+5. **Microphone not accessible in browser**
+
+   - Solution: Grant microphone permissions in browser settings
+   - Use HTTPS if accessing from network (required for microphone access)
+   - Check browser console for permission errors
    - Check Tesseract.js installation
 
-3. **Clipboard monitoring not working**
+6. **Clipboard monitoring not working**
+
    - Solution: Grant clipboard permissions in system settings
    - On macOS: System Preferences → Security & Privacy → Privacy → Accessibility
 
-4. **Screenshots not being detected**
+7. **Screenshots not being detected**
+
    - Solution: Verify `SCREENSHOTS_PATH` is correct
    - Ensure directory exists and is writable
    - Check file permissions
 
-5. **Email not sending**
+8. **Email not sending**
+
    - Solution: Verify Gmail App Password is correct
    - Check `EMAIL_USER` and `EMAIL_PASS` in `.env`
    - Ensure 2-Step Verification is enabled
 
-6. **Port already in use**
+9. **Port already in use**
    - Solution: Change `PORT` in `.env` or kill the process using the port
 
 ### Debug Mode
 
 Enable verbose logging by checking console output. The application logs:
+
 - AI provider attempts and results
 - Clipboard changes
 - Screenshot detections
@@ -437,4 +582,3 @@ ISC License
 ---
 
 **Note**: This application requires at least one AI provider API key to function. Configure API keys via the web interface after starting the application.
-

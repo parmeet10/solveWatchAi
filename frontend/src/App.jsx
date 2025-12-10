@@ -3,6 +3,7 @@ import UploadSection from './components/UploadSection';
 import DataSection from './components/DataSection';
 import ApiKeyConfig from './components/ApiKeyConfig';
 import EmailConfig from './components/EmailConfig';
+import Transcriber from './components/Transcriber';
 import apiService from './services/api';
 import './App.css';
 
@@ -387,6 +388,8 @@ function App() {
       </header>
 
       <UploadSection onUploadSuccess={handleUploadSuccess} />
+
+      <Transcriber />
 
       <DataSection data={processedData} loading={loading} />
     </div>

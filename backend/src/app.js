@@ -7,6 +7,7 @@ import imageRoutes from './routes/image.routes.js';
 import contextRoutes from './routes/context.routes.js';
 import clipboardRoutes from './routes/clipboard.routes.js';
 import configRoutes from './routes/config.routes.js';
+import transcribeRoutes from './routes/transcribe.routes.js';
 import {
   errorHandler,
   notFoundHandler,
@@ -27,6 +28,7 @@ app.use('/api', imageRoutes);
 app.use('/api', contextRoutes);
 app.use('/api', clipboardRoutes);
 app.use('/api', configRoutes);
+app.use('/api', transcribeRoutes);
 
 // Serve static files from frontend/dist (React build)
 const frontendDistPath = path.join(process.cwd(), 'frontend', 'dist');
