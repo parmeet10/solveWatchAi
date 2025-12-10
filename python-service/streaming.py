@@ -6,10 +6,12 @@ import json
 import logging
 import base64
 import uuid
+import time
 from typing import Dict, Optional
 from fastapi import WebSocket
 from starlette.websockets import WebSocketDisconnect
 from transcription import transcription_service
+from vad import vad_service
 
 logger = logging.getLogger(__name__)
 
@@ -21,43 +23,111 @@ class StreamingSession:
         self.session_id = session_id
         self.websocket = websocket
         self.audio_buffer = bytearray()
+        self.speech_buffer = bytearray()  # Buffer for detected speech
         self.is_active = True
         self.last_transcription_time = 0
         self.chunk_interval = 3  # Process chunks every 3 seconds
         self.chunks_received = 0
+        self.consecutive_silence_chunks = 0
+        self.min_speech_chunks = 2  # Minimum chunks with speech before processing
+        self.process_until_timestamp = None  # Timestamp cutoff for flush operations
+        self.pending_chunks = []  # Store chunks with timestamps during flush grace period
         
-    async def process_audio_chunk(self, audio_data: bytes):
-        """Process incoming audio chunk"""
+    async def process_audio_chunk(self, audio_data: bytes, chunk_timestamp: Optional[float] = None):
+        """Process incoming audio chunk with VAD"""
         try:
+            # If we're in flush mode, check if this chunk should be processed
+            if self.process_until_timestamp is not None:
+                # Use current time if timestamp not provided
+                if chunk_timestamp is None:
+                    chunk_timestamp = time.time() * 1000  # Convert to milliseconds
+                
+                # If chunk is after cutoff, ignore it (it's post-flush)
+                if chunk_timestamp > self.process_until_timestamp:
+                    logger.debug(f"Session {self.session_id}: Ignoring chunk after cutoff timestamp ({chunk_timestamp} > {self.process_until_timestamp})")
+                    return
+            
             self.audio_buffer.extend(audio_data)
             self.chunks_received += 1
             
-            # Process chunk if we have enough data (3 seconds at 16kHz = 48000 samples = 96000 bytes for 16-bit)
+            # Check for speech activity using VAD
+            is_speech = vad_service.is_speech(audio_data, sample_rate=16000)
+            
+            if is_speech:
+                # Speech detected - add to speech buffer
+                self.speech_buffer.extend(audio_data)
+                self.consecutive_silence_chunks = 0
+                
+                logger.debug(f"Session {self.session_id}: Speech detected in chunk {self.chunks_received}")
+            else:
+                # Silence detected
+                self.consecutive_silence_chunks += 1
+                logger.debug(f"Session {self.session_id}: Silence detected in chunk {self.chunks_received} (consecutive: {self.consecutive_silence_chunks})")
+                
+                # If we have accumulated speech and hit silence, process the speech buffer
+                if len(self.speech_buffer) > 0 and self.consecutive_silence_chunks >= 2:
+                    await self._process_speech_buffer()
+            
+            # Also process if we have enough accumulated speech (3 seconds at 16kHz = 48000 samples = 96000 bytes for 16-bit)
             min_chunk_size = 16000 * 2 * self.chunk_interval  # 16kHz * 2 bytes * seconds
             
-            logger.debug(f"Session {self.session_id}: Received chunk {self.chunks_received}, buffer size: {len(self.audio_buffer)} bytes, need: {min_chunk_size} bytes")
+            if len(self.speech_buffer) >= min_chunk_size:
+                await self._process_speech_buffer()
+                
+        except WebSocketDisconnect:
+            logger.info(f"WebSocket disconnected while processing chunk for session {self.session_id}")
+            self.is_active = False
+        except Exception as e:
+            logger.error(f"Error processing audio chunk for session {self.session_id}: {e}")
+            error_msg = {
+                "type": "error",
+                "sessionId": self.session_id,
+                "message": str(e)
+            }
+            try:
+                await self.websocket.send_json(error_msg)
+            except (WebSocketDisconnect, RuntimeError):
+                self.is_active = False
+            except:
+                pass
+    
+    async def _process_speech_buffer(self):
+        """Process accumulated speech buffer"""
+        if len(self.speech_buffer) == 0:
+            return
+        
+        try:
+            # Check if we have sufficient speech (avoid processing very short clips)
+            if not vad_service.has_sufficient_speech(self.speech_buffer, sample_rate=16000, min_speech_duration_ms=250):
+                # Clear buffer if insufficient speech
+                self.speech_buffer.clear()
+                return
             
-            if len(self.audio_buffer) >= min_chunk_size:
-                chunk_to_process = bytes(self.audio_buffer[:min_chunk_size])
-                self.audio_buffer = self.audio_buffer[min_chunk_size:]
+            # Process the speech buffer
+            chunk_to_process = bytes(self.speech_buffer)
+            self.speech_buffer.clear()
+            
+            logger.debug(f"Session {self.session_id}: Processing speech buffer ({len(chunk_to_process)} bytes)")
+            
+            # Transcribe the chunk
+            text, confidence = transcription_service.transcribe_chunk(
+                chunk_to_process,
+                sample_rate=16000
+            )
+            
+            if text.strip():
+                result = {
+                    "type": "transcription",
+                    "sessionId": self.session_id,
+                    "text": text,
+                    "confidence": confidence,
+                    "timestamp": time.time()
+                }
                 
-                # Transcribe the chunk
-                text, confidence = transcription_service.transcribe_chunk(
-                    chunk_to_process,
-                    sample_rate=16000
-                )
-                
-                if text.strip():
-                    result = {
-                        "type": "transcription",
-                        "sessionId": self.session_id,
-                        "text": text,
-                        "confidence": confidence,
-                        "timestamp": asyncio.get_event_loop().time()
-                    }
-                    
-                    await self.websocket.send_json(result)
-                    logger.info(f"Session {self.session_id}: Transcribed chunk - {text[:50]}...")
+                await self.websocket.send_json(result)
+                logger.info(f"Session {self.session_id}: Transcribed chunk - {text[:50]}...")
+        except Exception as e:
+            logger.error(f"Error processing speech buffer for session {self.session_id}: {e}")
                     
         except WebSocketDisconnect:
             logger.info(f"WebSocket disconnected while processing chunk for session {self.session_id}")
@@ -78,32 +148,102 @@ class StreamingSession:
     
     async def flush_buffer(self):
         """Flush remaining audio buffer"""
+        # Process any remaining speech in the buffer
+        if len(self.speech_buffer) > 0:
+            await self._process_speech_buffer()
+        
+        # Also check audio buffer for any remaining speech
         if len(self.audio_buffer) > 16000:  # At least 1 second of audio
-            try:
-                text, confidence = transcription_service.transcribe_chunk(
-                    bytes(self.audio_buffer),
-                    sample_rate=16000
-                )
-                
-                if text.strip():
-                    result = {
-                        "type": "transcription",
-                        "sessionId": self.session_id,
-                        "text": text,
-                        "confidence": confidence,
-                        "timestamp": asyncio.get_event_loop().time(),
-                        "final": True
-                    }
+            # Check if remaining audio contains speech
+            if vad_service.has_sufficient_speech(self.audio_buffer, sample_rate=16000, min_speech_duration_ms=250):
+                try:
+                    text, confidence = transcription_service.transcribe_chunk(
+                        bytes(self.audio_buffer),
+                        sample_rate=16000
+                    )
                     
-                    await self.websocket.send_json(result)
-                    logger.info(f"Session {self.session_id}: Final transcription - {text[:50]}...")
-            except WebSocketDisconnect:
-                logger.info(f"WebSocket disconnected while flushing buffer for session {self.session_id}")
-                self.is_active = False
-            except Exception as e:
-                logger.error(f"Error flushing buffer for session {self.session_id}: {e}")
+                    if text.strip():
+                        result = {
+                            "type": "transcription",
+                            "sessionId": self.session_id,
+                            "text": text,
+                            "confidence": confidence,
+                            "timestamp": time.time(),
+                            "final": True
+                        }
+                        
+                        await self.websocket.send_json(result)
+                        logger.info(f"Session {self.session_id}: Final transcription - {text[:50]}...")
+                except WebSocketDisconnect:
+                    logger.info(f"WebSocket disconnected while flushing buffer for session {self.session_id}")
+                    self.is_active = False
+                except Exception as e:
+                    logger.error(f"Error flushing buffer for session {self.session_id}: {e}")
         
         self.audio_buffer.clear()
+        self.speech_buffer.clear()
+    
+    async def flush_buffer_with_cutoff(self, cutoff_timestamp: float, grace_period_ms: int = 500):
+        """
+        Flush buffer with timestamp cutoff and grace period for in-transit packets
+        
+        Args:
+            cutoff_timestamp: Timestamp in milliseconds - only process chunks before this
+            grace_period_ms: Grace period in milliseconds to wait for in-transit packets
+        """
+        import time
+        
+        logger.info(f"Session {self.session_id}: Starting flush with cutoff timestamp {cutoff_timestamp}, grace period {grace_period_ms}ms")
+        
+        # Set cutoff timestamp
+        self.process_until_timestamp = cutoff_timestamp
+        
+        # Wait for grace period to catch in-transit packets
+        grace_period_seconds = grace_period_ms / 1000.0
+        await asyncio.sleep(grace_period_seconds)
+        
+        logger.info(f"Session {self.session_id}: Grace period ended, processing remaining buffers")
+        
+        # Process any remaining speech in the buffer (only chunks before cutoff)
+        if len(self.speech_buffer) > 0:
+            await self._process_speech_buffer()
+        
+        # Also check audio buffer for any remaining speech
+        if len(self.audio_buffer) > 16000:  # At least 1 second of audio
+            # Check if remaining audio contains speech
+            if vad_service.has_sufficient_speech(self.audio_buffer, sample_rate=16000, min_speech_duration_ms=250):
+                try:
+                    text, confidence = transcription_service.transcribe_chunk(
+                        bytes(self.audio_buffer),
+                        sample_rate=16000
+                    )
+                    
+                    if text.strip():
+                        result = {
+                            "type": "transcription",
+                            "sessionId": self.session_id,
+                            "text": text,
+                            "confidence": confidence,
+                            "timestamp": time.time(),
+                            "final": True
+                        }
+                        
+                        await self.websocket.send_json(result)
+                        logger.info(f"Session {self.session_id}: Final transcription after flush - {text[:50]}...")
+                except WebSocketDisconnect:
+                    logger.info(f"WebSocket disconnected while flushing buffer for session {self.session_id}")
+                    self.is_active = False
+                except Exception as e:
+                    logger.error(f"Error flushing buffer for session {self.session_id}: {e}")
+        
+        # Clear buffers
+        self.audio_buffer.clear()
+        self.speech_buffer.clear()
+        
+        # Reset cutoff timestamp to allow new chunks
+        self.process_until_timestamp = None
+        
+        logger.info(f"Session {self.session_id}: Flush completed, buffers cleared")
 
 
 class StreamingManager:
@@ -169,9 +309,31 @@ class StreamingManager:
                                 logger.warning(f"Received audio chunk but no session exists for {session_id}")
                                 continue
                             audio_data_b64 = data.get("chunk")
+                            chunk_timestamp = data.get("timestamp")  # Get timestamp if provided
                             if audio_data_b64:
                                 audio_data = base64.b64decode(audio_data_b64)
-                                await session.process_audio_chunk(audio_data)
+                                await session.process_audio_chunk(audio_data, chunk_timestamp)
+                        
+                        elif data.get("type") == "flush_buffer":
+                            if not session:
+                                logger.warning(f"Received flush_buffer but no session exists for {session_id}")
+                                continue
+                            cutoff_timestamp = data.get("cutoffTimestamp")
+                            grace_period_ms = data.get("gracePeriodMs", 500)  # Default 500ms
+                            
+                            if cutoff_timestamp:
+                                # Flush with timestamp cutoff
+                                await session.flush_buffer_with_cutoff(cutoff_timestamp, grace_period_ms)
+                            else:
+                                # Fallback to regular flush
+                                await session.flush_buffer()
+                            
+                            # Send confirmation
+                            await websocket.send_json({
+                                "type": "buffer_flushed",
+                                "sessionId": session_id
+                            })
+                            logger.info(f"Session {session_id}: Buffer flushed and confirmation sent")
                         
                         elif data.get("type") == "end_stream":
                             if session:

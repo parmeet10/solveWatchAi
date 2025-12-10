@@ -11,7 +11,8 @@ class PythonServiceWebSocketClient {
       'http://',
       'ws://',
     ).replace('https://', 'wss://');
-    this.connections = new Map(); // sessionId -> {ws, sessionId, streamEnded}
+    this.connections = new Map(); // sessionId -> {ws, sessionId, streamEnded, flushPromise, flushResolve}
+    this.lastChunkTimestamps = new Map(); // sessionId -> last chunk timestamp
   }
 
   /**
@@ -66,6 +67,8 @@ class PythonServiceWebSocketClient {
                 sessionId,
                 ready: true,
                 streamEnded: false,
+                flushPromise: null,
+                flushResolve: null,
               });
               resolve(ws);
             } else if (message.type === 'transcription') {
@@ -105,6 +108,17 @@ class PythonServiceWebSocketClient {
               const connection = this.connections.get(sessionId);
               if (connection) {
                 connection.streamEnded = true;
+              }
+            } else if (message.type === 'buffer_flushed') {
+              console.log(
+                `[Python WS] Buffer flushed confirmation for session: ${sessionId}`,
+              );
+              // Resolve flush promise if it exists
+              const connection = this.connections.get(sessionId);
+              if (connection && connection.flushResolve) {
+                connection.flushResolve();
+                connection.flushPromise = null;
+                connection.flushResolve = null;
               }
             }
           } catch (error) {
@@ -186,12 +200,17 @@ class PythonServiceWebSocketClient {
       );
     }
 
+    const chunkTimestamp = Date.now();
+
+    // Track last chunk timestamp
+    this.lastChunkTimestamps.set(sessionId, chunkTimestamp);
+
     connection.ws.send(
       JSON.stringify({
         type: 'audio_chunk',
         sessionId: sessionId,
         chunk: base64Chunk,
-        timestamp: Date.now(),
+        timestamp: chunkTimestamp,
       }),
     );
   }
@@ -210,6 +229,74 @@ class PythonServiceWebSocketClient {
         }),
       );
     }
+  }
+
+  /**
+   * Flush buffer with timestamp cutoff
+   * @param {string} sessionId - Session ID
+   * @param {number} cutoffTimestamp - Timestamp in milliseconds (optional, defaults to current time)
+   * @param {number} gracePeriodMs - Grace period in milliseconds (default: 500)
+   * @returns {Promise<void>} Resolves when buffer is flushed
+   */
+  async flushBuffer(sessionId, cutoffTimestamp = null, gracePeriodMs = 500) {
+    const connection = this.connections.get(sessionId);
+
+    if (
+      !connection ||
+      !connection.ready ||
+      connection.ws.readyState !== WebSocket.OPEN
+    ) {
+      console.warn(
+        `[Python WS] Cannot flush buffer - connection not ready for session: ${sessionId}`,
+      );
+      return Promise.resolve();
+    }
+
+    // Use provided cutoff timestamp or calculate from last chunk timestamp
+    if (!cutoffTimestamp) {
+      const lastChunkTime = this.lastChunkTimestamps.get(sessionId);
+      if (lastChunkTime) {
+        // Use last chunk timestamp minus small buffer for network latency
+        cutoffTimestamp = lastChunkTime - 50; // 50ms buffer
+      } else {
+        // Fallback to current time minus network latency estimate
+        cutoffTimestamp = Date.now() - 100; // 100ms buffer
+      }
+    }
+
+    console.log(
+      `[Python WS] Flushing buffer for session ${sessionId} with cutoff timestamp: ${cutoffTimestamp}`,
+    );
+
+    // Create promise for flush completion
+    const flushPromise = new Promise((resolve, reject) => {
+      connection.flushPromise = flushPromise;
+      connection.flushResolve = resolve;
+
+      // Set timeout (3 seconds)
+      setTimeout(() => {
+        if (connection.flushResolve === resolve) {
+          console.warn(
+            `[Python WS] Flush timeout for session ${sessionId}, resolving anyway`,
+          );
+          connection.flushPromise = null;
+          connection.flushResolve = null;
+          resolve();
+        }
+      }, 3000);
+    });
+
+    // Send flush command
+    connection.ws.send(
+      JSON.stringify({
+        type: 'flush_buffer',
+        sessionId: sessionId,
+        cutoffTimestamp: cutoffTimestamp,
+        gracePeriodMs: gracePeriodMs,
+      }),
+    );
+
+    return flushPromise;
   }
 
   /**

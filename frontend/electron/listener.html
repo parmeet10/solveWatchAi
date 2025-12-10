@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Keyboard Listener</title>
+  </head>
+  <body>
+    <script>
+      // Listen for all keydown events
+      document.addEventListener('keydown', (event) => {
+        // Send key to main process via preload script
+        if (window.electronAPI) {
+          window.electronAPI.sendKeydown(event.key);
+        }
+      });
+
+      // Make sure window can receive focus
+      window.addEventListener('focus', () => {
+        console.log('Window focused');
+      });
+    </script>
+  </body>
+</html>

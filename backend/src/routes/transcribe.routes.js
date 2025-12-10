@@ -17,7 +17,12 @@ router.post('/transcription/process', (req, res) => {
   transcriptionController.processTranscription(req, res);
 });
 
-// Get transcription for a session
+// Get latest active session (must be before /:sessionId route)
+router.get('/transcription/latest-session', (req, res) => {
+  transcriptionController.getLatestSession(req, res);
+});
+
+// Get transcription for a session (must be after specific routes)
 router.get('/transcription/:sessionId', (req, res) => {
   transcriptionController.getTranscription(req, res);
 });

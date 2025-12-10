@@ -1,13 +1,13 @@
 # Python Transcription Service
 
-FastAPI microservice for speech-to-text transcription using faster-whisper.
+FastAPI microservice for speech-to-text transcription using mlx-whisper (optimized for Apple Silicon).
 
 ## Features
 
 - **REST API** for file upload transcription
 - **WebSocket** for real-time streaming transcription
-- **faster-whisper** with M1 GPU acceleration (MPS)
-- Voice Activity Detection (VAD)
+- **mlx-whisper** with M1/M2/M3 GPU acceleration (MPS)
+- **Voice Activity Detection (VAD)** using Silero VAD to filter silence
 - Session management for multiple concurrent users
 
 ## Prerequisites
@@ -33,7 +33,7 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-**Note:** On first run, faster-whisper will download the Whisper model (distil-medium.en, ~1.5GB). This is a one-time download.
+**Note:** On first run, mlx-whisper will download the Whisper model (default: small, ~466MB). This is a one-time download. The model is cached for subsequent uses.
 
 3. **Configure environment (optional):**
 
@@ -46,8 +46,9 @@ cp .env.example .env
 Default configuration:
 
 - Port: 8000
-- Model: distil-medium.en
-- Device: mps (M1 Mac), cuda (NVIDIA GPU), or cpu
+- Model: small (mlx-community/whisper-small-mlx)
+- VAD: Enabled (threshold: 0.5)
+- Device: Automatically uses MPS on Apple Silicon (M1/M2/M3)
 
 ## Running the Service
 
@@ -156,12 +157,16 @@ Environment variables (in `.env` file):
 
 - `PYTHON_SERVICE_PORT`: Port number (default: 8000)
 - `PYTHON_SERVICE_HOST`: Host address (default: 0.0.0.0)
-- `WHISPER_MODEL`: Whisper model name (default: distil-medium.en)
-- `WHISPER_DEVICE`: Device to use - mps, cuda, or cpu (default: mps)
+- `WHISPER_MODEL`: Whisper model name - tiny, base, small, medium, or large (default: small)
+  - Available models: `tiny` (~39M params), `base` (~74M), `small` (~244M), `medium` (~769M), `large` (~1550M)
+  - Can also use full HuggingFace path: `mlx-community/whisper-small-mlx`
 - `CHUNK_LENGTH_S`: Chunk length for file transcription (default: 30)
-- `STREAMING_CHUNK_LENGTH_S`: Chunk length for streaming (default: 5)
 - `ENABLE_VAD`: Enable Voice Activity Detection (default: true)
-- `VAD_THRESHOLD`: VAD threshold (default: 0.5)
+  - When enabled, only audio chunks with detected speech are transcribed
+  - Reduces processing of silence and background noise
+- `VAD_THRESHOLD`: VAD speech probability threshold 0.0-1.0 (default: 0.5)
+  - Lower values = more sensitive (may detect noise as speech)
+  - Higher values = less sensitive (may miss quiet speech)
 
 ## Supported Audio Formats
 
@@ -174,31 +179,44 @@ Environment variables (in `.env` file):
 
 ## Performance
 
-- **M1 Mac (MPS):** ~2-3x faster than CPU
-- **NVIDIA GPU (CUDA):** ~5-10x faster than CPU
-- **CPU:** Slower but works on any system
+### Model Size vs Accuracy Trade-offs
 
-For best performance on M1 Mac, ensure `WHISPER_DEVICE=mps` in `.env`.
+- **tiny**: ~39M params, ~75MB, fastest, lowest accuracy
+- **base**: ~74M params, ~142MB, good balance
+- **small**: ~244M params, ~466MB, better accuracy (default)
+- **medium**: ~769M params, ~1.5GB, high accuracy
+- **large**: ~1550M params, ~3GB, highest accuracy
+
+### Performance Notes
+
+- **M1/M2/M3 Mac (MPS)**: MLX automatically uses MPS acceleration
+- **CPU**: Falls back to CPU if MPS unavailable
+- **VAD**: Reduces processing by ~30-50% by filtering silence
+- **Memory**: Small model requires ~2-4GB RAM, medium requires ~4-8GB
+
+For best accuracy on M1/M2/M3 Macs with 8GB+ RAM, use `small` or `medium` model.
 
 ## Troubleshooting
 
 ### Model download fails
 
 - Check internet connection
-- Ensure sufficient disk space (~2GB for model)
-- Try downloading manually from Hugging Face
-
-### MPS device not available
-
-- Ensure you're on macOS with M1/M2 chip
-- Check PyTorch installation: `python -c "import torch; print(torch.backends.mps.is_available())"`
-- Fall back to CPU by setting `WHISPER_DEVICE=cpu`
+- Ensure sufficient disk space (small model: ~466MB, medium: ~1.5GB)
+- Models are cached in HuggingFace cache directory
 
 ### Out of memory errors
 
-- Use a smaller model (e.g., `distil-small.en`)
+- Use a smaller model (e.g., `base` or `tiny` instead of `small`)
 - Reduce `CHUNK_LENGTH_S` for file transcription
 - Process shorter audio segments
+- Close other applications to free memory
+
+### VAD not working
+
+- Ensure `ENABLE_VAD=true` in environment
+- Check that Silero VAD model downloaded successfully
+- Adjust `VAD_THRESHOLD` if too many false positives/negatives
+- VAD requires 16kHz sample rate audio
 
 ### WebSocket connection issues
 

@@ -83,6 +83,38 @@ class StreamHandler {
         }
       });
 
+      // Handle flush buffer request
+      socket.on('flush_buffer', async (data) => {
+        try {
+          const cutoffTimestamp = data?.cutoffTimestamp || null;
+          const gracePeriodMs = data?.gracePeriodMs || 500;
+
+          console.log(
+            `[Socket.io] Flush buffer requested for session: ${sessionId}, cutoff: ${cutoffTimestamp}`,
+          );
+
+          if (!pythonWS) {
+            socket.emit('error', { message: 'Stream not started' });
+            return;
+          }
+
+          // Flush buffer via Python service
+          await pythonServiceWS.flushBuffer(
+            sessionId,
+            cutoffTimestamp,
+            gracePeriodMs,
+          );
+
+          socket.emit('buffer_flushed', { sessionId });
+          console.log(`[Socket.io] Buffer flushed for session: ${sessionId}`);
+        } catch (error) {
+          console.error(`[Socket.io] Error flushing buffer:`, error);
+          socket.emit('error', {
+            message: error.message || 'Failed to flush buffer',
+          });
+        }
+      });
+
       // Handle stream end
       socket.on('end_stream', () => {
         console.log(`[Socket.io] Ending stream for session: ${sessionId}`);

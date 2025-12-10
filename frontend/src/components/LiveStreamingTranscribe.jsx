@@ -10,6 +10,7 @@ function LiveStreamingTranscribe() {
   const [transcriptions, setTranscriptions] = useState([]);
   const [aiResponse, setAiResponse] = useState(null);
   const [processingAI, setProcessingAI] = useState(false);
+  const [httpsWarning, setHttpsWarning] = useState(false);
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
   const streamRef = useRef(null);
@@ -17,6 +18,20 @@ function LiveStreamingTranscribe() {
   const recordingRef = useRef(false);
   const sessionIdRef = useRef(null);
   const keyPressHistoryRef = useRef([]);
+
+  // Check if HTTPS is required but not available
+  useEffect(() => {
+    const isHTTPS = window.location.protocol === 'https:';
+    const hasGetUserMedia =
+      navigator.mediaDevices && navigator.mediaDevices.getUserMedia;
+
+    // Show warning if not HTTPS and getUserMedia might not work
+    if (!isHTTPS && !hasGetUserMedia) {
+      setHttpsWarning(true);
+    } else {
+      setHttpsWarning(false);
+    }
+  }, []);
 
   const handleTranscription = React.useCallback((data) => {
     // Store transcription locally
@@ -70,6 +85,7 @@ function LiveStreamingTranscribe() {
     startStream,
     sendAudioChunk,
     endStream,
+    flushBuffer,
     getSessionId,
   } = useWebSocket(handleTranscription, handleError);
   const streamingRef = useRef(false);
@@ -131,7 +147,35 @@ function LiveStreamingTranscribe() {
       setProcessingAI(true);
       setStatus('processing-ai');
 
-      const result = await apiService.processTranscription(sessionId);
+      // Record cutoff timestamp when "pp" is pressed
+      // Subtract small buffer to account for network latency
+      const cutoffTimestamp = Date.now() - 100; // 100ms buffer for network latency
+
+      console.log(
+        `[Frontend] Flushing buffer before processing, cutoff timestamp: ${cutoffTimestamp}`,
+      );
+
+      // Flush buffer to ensure all audio up to this point is processed
+      try {
+        if (flushBuffer && streaming) {
+          await flushBuffer(cutoffTimestamp, 500);
+          console.log('[Frontend] Buffer flushed successfully');
+
+          // Small delay to ensure all transcriptions are stored
+          await new Promise((resolve) => setTimeout(resolve, 200));
+        }
+      } catch (flushError) {
+        console.warn(
+          `[Frontend] Error flushing buffer (non-fatal): ${flushError.message}`,
+        );
+        // Continue anyway - might still have transcriptions
+      }
+
+      // Now process transcription with AI
+      const result = await apiService.processTranscription(
+        sessionId,
+        cutoffTimestamp,
+      );
 
       if (result.success) {
         setAiResponse({
@@ -140,6 +184,10 @@ function LiveStreamingTranscribe() {
           timestamp: new Date().toLocaleString(),
         });
         setStatus('ai-complete');
+
+        // Clear transcriptions so next "pp" only processes new audio
+        setTranscriptions([]);
+        console.log('[Frontend] Cleared transcriptions after processing');
 
         // Refresh data in parent component (App.jsx)
         // This will be handled by the App component's periodic refresh
@@ -169,6 +217,32 @@ function LiveStreamingTranscribe() {
   const startRecording = async () => {
     try {
       console.log('[Frontend] Starting recording...');
+
+      // Check if getUserMedia is available
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        const isHTTPS = window.location.protocol === 'https:';
+        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+        let errorMessage = '';
+
+        if (!isHTTPS && isMobile) {
+          errorMessage =
+            'Microphone access requires HTTPS on mobile devices.\n\n';
+          errorMessage += `Please access this page using:\n`;
+          errorMessage += `https://${window.location.hostname}:${
+            window.location.port || 3000
+          }\n\n`;
+          errorMessage +=
+            'You may see a security warning - click "Advanced" and "Proceed anyway" (it\'s safe - self-signed certificate).';
+        } else if (!isHTTPS) {
+          errorMessage =
+            'Microphone access requires HTTPS. Please access this page using HTTPS (https://...) instead of HTTP.';
+        } else {
+          errorMessage =
+            'Microphone access is not available in this browser. Please use a modern browser that supports audio recording.';
+        }
+
+        throw new Error(errorMessage);
+      }
 
       // Request microphone access
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -466,7 +540,10 @@ function LiveStreamingTranscribe() {
             </span>
           )}
           {status === 'error' && (
-            <span>An error occurred. Please try again.</span>
+            <span>
+              An error occurred. Please check the console for details or ensure
+              you're using HTTPS on mobile devices.
+            </span>
           )}
         </div>
       )}
@@ -474,6 +551,67 @@ function LiveStreamingTranscribe() {
       {!connected && (
         <div className="connection-warning">
           ⚠️ Not connected to server. Please wait for connection...
+          <br />
+          <small
+            style={{ display: 'block', marginTop: '5px', fontSize: '12px' }}
+          >
+            If this persists, check:
+            <br />• Backend server is running on port 4000
+            <br />• Both devices are on the same WiFi network
+            <br />• Browser console for detailed error messages
+          </small>
+        </div>
+      )}
+
+      {httpsWarning && (
+        <div
+          className="connection-warning"
+          style={{
+            backgroundColor: '#ff6b6b',
+            color: 'white',
+            padding: '15px',
+            borderRadius: '8px',
+            marginTop: '10px',
+          }}
+        >
+          <strong>⚠️ HTTPS Required for Microphone Access</strong>
+          <p style={{ margin: '10px 0 0 0', fontSize: '14px' }}>
+            Mobile browsers require HTTPS to access your microphone.
+            {window.location.port === '3000' ? (
+              <>
+                <br />
+                Try accessing via HTTPS:
+                <br />
+                <code
+                  style={{
+                    backgroundColor: 'rgba(0,0,0,0.2)',
+                    padding: '4px 8px',
+                    borderRadius: '4px',
+                    display: 'inline-block',
+                    marginTop: '5px',
+                  }}
+                >
+                  https://{window.location.hostname}:3000
+                </code>
+                <br />
+                <small
+                  style={{ display: 'block', marginTop: '8px', opacity: 0.9 }}
+                >
+                  (If HTTPS is configured, you may see a security warning -
+                  click "Advanced" and "Proceed anyway" - it's safe, it's a
+                  self-signed certificate)
+                </small>
+              </>
+            ) : (
+              <br />
+            )}
+            <br />
+            <small style={{ display: 'block', marginTop: '8px', opacity: 0.9 }}>
+              <strong>Note:</strong> To enable HTTPS, ensure you have{' '}
+              <code>cert.pem</code> and <code>key.pem</code> files in the
+              project root directory.
+            </small>
+          </p>
         </div>
       )}
 

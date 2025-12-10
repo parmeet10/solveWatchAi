@@ -1,65 +1,46 @@
 """
-Transcription service using faster-whisper
+Transcription service using mlx-whisper (optimized for M1 GPU with MPS acceleration)
 """
 import os
-from faster_whisper import WhisperModel
+import mlx_whisper
 from typing import Optional, Tuple
 import logging
+import numpy as np
+import tempfile
+import wave
 
 logger = logging.getLogger(__name__)
 
 
 class TranscriptionService:
-    """Service for transcribing audio using faster-whisper"""
+    """Service for transcribing audio using mlx-whisper with MPS acceleration"""
     
     def __init__(self):
-        self.model = None
-        self.model_name = os.getenv("WHISPER_MODEL", "distil-medium.en")
-        # faster-whisper doesn't support MPS, only CPU and CUDA
-        # Auto-detect device: prefer CUDA if available, otherwise CPU
-        device_env = os.getenv("WHISPER_DEVICE", "").lower()
-        if device_env == "cuda":
-            self.device = "cuda"
-        elif device_env == "mps":
-            # MPS not supported, fall back to CPU
-            logger.warning("MPS device requested but not supported by faster-whisper. Using CPU instead.")
-            self.device = "cpu"
+        self.model_name = os.getenv("WHISPER_MODEL", "small")
+        # Convert model name to mlx-whisper format (e.g., "tiny" -> "mlx-community/whisper-tiny")
+        # mlx-whisper uses HuggingFace model names
+        if not self.model_name.startswith("mlx-community/"):
+            # Map simple names to full HuggingFace repo names
+            model_map = {
+                "tiny": "mlx-community/whisper-tiny-mlx",
+                "base": "mlx-community/whisper-base-mlx",
+                "small": "mlx-community/whisper-small-mlx",
+                "medium": "mlx-community/whisper-medium-mlx",
+                "large": "mlx-community/whisper-large-v3-mlx"
+            }
+            self.model_path = model_map.get(self.model_name, f"mlx-community/whisper-{self.model_name}")
         else:
-            # Default to CPU (faster-whisper doesn't support MPS)
-            self.device = "cpu"
+            self.model_path = self.model_name
         
-        self.compute_type = "float16" if self.device == "cuda" else "int8"
+        # mlx-whisper automatically uses MPS on Apple Silicon (M1/M2/M3)
+        # No need to specify device - MLX handles it automatically
+        logger.info(f"Initializing MLX Whisper service (MPS acceleration enabled on Apple Silicon, model: {self.model_path})")
         
     def load_model(self):
-        """Load the Whisper model"""
-        if self.model is None:
-            try:
-                logger.info(f"Loading Whisper model: {self.model_name} on device: {self.device}")
-                self.model = WhisperModel(
-                    self.model_name,
-                    device=self.device,
-                    compute_type=self.compute_type
-                )
-                logger.info(f"Whisper model loaded successfully on {self.device}")
-            except Exception as e:
-                logger.error(f"Error loading Whisper model: {e}")
-                # Try falling back to CPU if other device fails
-                if self.device != "cpu":
-                    logger.warning(f"Failed to load on {self.device}, falling back to CPU")
-                    self.device = "cpu"
-                    self.compute_type = "int8"
-                    try:
-                        self.model = WhisperModel(
-                            self.model_name,
-                            device="cpu",
-                            compute_type="int8"
-                        )
-                        logger.info("Whisper model loaded successfully on CPU (fallback)")
-                    except Exception as e2:
-                        logger.error(f"Error loading Whisper model on CPU: {e2}")
-                        raise
-                else:
-                    raise
+        """Load the Whisper model - mlx-whisper loads models on-demand, so this is a no-op"""
+        # mlx-whisper.transcribe() loads the model automatically on first use
+        # Models are cached by HuggingFace, so subsequent calls are fast
+        logger.info(f"MLX Whisper model '{self.model_path}' will be loaded on first transcription")
     
     def transcribe_file(
         self, 
@@ -72,44 +53,51 @@ class TranscriptionService:
         
         Args:
             audio_path: Path to audio file
-            chunk_length_s: Length of audio chunks in seconds
+            chunk_length_s: Length of audio chunks in seconds (used for processing)
             language: Language code (optional, auto-detect if None)
             
         Returns:
             Tuple of (transcribed_text, confidence_score)
         """
-        if self.model is None:
-            self.load_model()
-        
         try:
             logger.info(f"Transcribing file: {audio_path}")
             
-            segments, info = self.model.transcribe(
-                audio_path,
-                language=language,
-                chunk_length_s=chunk_length_s,
-                beam_size=5,
-                vad_filter=True,
-                vad_parameters=dict(min_silence_duration_ms=500)
-            )
+            # mlx-whisper.transcribe() function - loads model automatically
+            # It automatically handles chunking and returns full transcription
+            transcribe_kwargs = {
+                'path_or_hf_repo': self.model_path
+            }
+            if language:
+                transcribe_kwargs['language'] = language
             
-            # Combine all segments
-            full_text = ""
+            result = mlx_whisper.transcribe(audio_path, **transcribe_kwargs)
+            
+            # Extract text from result
+            # mlx-whisper returns a dict with 'text' and 'segments'
+            full_text = result.get('text', '')
+            segments = result.get('segments', [])
+            
+            # Calculate confidence from segments
+            # mlx-whisper segments have 'no_speech_prob' - we'll use (1 - no_speech_prob) as confidence
             total_confidence = 0.0
             segment_count = 0
             
             for segment in segments:
-                full_text += segment.text + " "
-                if hasattr(segment, 'avg_logprob'):
-                    total_confidence += segment.avg_logprob
-                    segment_count += 1
+                # Get confidence from segment (no_speech_prob is inverse confidence)
+                no_speech_prob = segment.get('no_speech_prob', 0.5)
+                segment_confidence = 1.0 - no_speech_prob
+                total_confidence += segment_confidence
+                segment_count += 1
             
-            avg_confidence = total_confidence / segment_count if segment_count > 0 else 0.0
-            # Convert logprob to confidence (rough approximation)
-            confidence = min(1.0, max(0.0, (avg_confidence + 1.0) / 2.0))
+            # Average confidence across all segments
+            avg_confidence = total_confidence / segment_count if segment_count > 0 else 0.8
             
-            logger.info(f"Transcription completed. Length: {len(full_text)} chars")
-            return full_text.strip(), confidence
+            # If no segments but we have text, use a default confidence
+            if segment_count == 0 and full_text.strip():
+                avg_confidence = 0.8
+            
+            logger.info(f"Transcription completed. Length: {len(full_text)} chars, Confidence: {avg_confidence:.2f}")
+            return full_text.strip(), avg_confidence
             
         except Exception as e:
             logger.error(f"Error transcribing file: {e}")
@@ -132,14 +120,7 @@ class TranscriptionService:
         Returns:
             Tuple of (transcribed_text, confidence_score)
         """
-        if self.model is None:
-            self.load_model()
-        
         try:
-            import numpy as np
-            import tempfile
-            import wave
-            
             # Convert bytes to numpy array
             # Assuming audio_data is PCM 16-bit mono
             audio_array = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
@@ -149,11 +130,7 @@ class TranscriptionService:
             if len(audio_array) < min_samples:
                 return "", 0.0
             
-            # faster-whisper transcribe() doesn't accept sample_rate when passing numpy array
-            # The array should already be at the correct sample rate (16kHz)
-            # We need to create a temporary WAV file or use the array directly
-            # For numpy arrays, we'll create a temporary WAV file
-            import os
+            # mlx-whisper needs audio file path, so we'll create a temporary WAV file
             with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp_file:
                 tmp_path = tmp_file.name
                 try:
@@ -166,34 +143,40 @@ class TranscriptionService:
                         int16_array = (audio_array * 32767).astype(np.int16)
                         wav_file.writeframes(int16_array.tobytes())
                     
-                    # Transcribe from file (this allows sample_rate parameter)
-                    segments, info = self.model.transcribe(
-                        tmp_path,
-                        language=language,
-                        beam_size=5,
-                        vad_filter=True,
-                        vad_parameters=dict(min_silence_duration_ms=300)
-                    )
+                    # Transcribe from temporary file using mlx_whisper.transcribe()
+                    transcribe_kwargs = {
+                        'path_or_hf_repo': self.model_path
+                    }
+                    if language:
+                        transcribe_kwargs['language'] = language
+                    
+                    result = mlx_whisper.transcribe(tmp_path, **transcribe_kwargs)
                 finally:
                     # Clean up temporary file
                     if os.path.exists(tmp_path):
                         os.unlink(tmp_path)
             
-            # Combine segments
-            full_text = ""
+            # Extract text and confidence from result
+            full_text = result.get('text', '')
+            segments = result.get('segments', [])
+            
+            # Calculate confidence from segments
             total_confidence = 0.0
             segment_count = 0
             
             for segment in segments:
-                full_text += segment.text + " "
-                if hasattr(segment, 'avg_logprob'):
-                    total_confidence += segment.avg_logprob
-                    segment_count += 1
+                no_speech_prob = segment.get('no_speech_prob', 0.5)
+                segment_confidence = 1.0 - no_speech_prob
+                total_confidence += segment_confidence
+                segment_count += 1
             
-            avg_confidence = total_confidence / segment_count if segment_count > 0 else 0.0
-            confidence = min(1.0, max(0.0, (avg_confidence + 1.0) / 2.0))
+            avg_confidence = total_confidence / segment_count if segment_count > 0 else 0.8
             
-            return full_text.strip(), confidence
+            # If no segments but we have text, use a default confidence
+            if segment_count == 0 and full_text.strip():
+                avg_confidence = 0.8
+            
+            return full_text.strip(), avg_confidence
             
         except Exception as e:
             logger.error(f"Error transcribing chunk: {e}")
@@ -202,4 +185,3 @@ class TranscriptionService:
 
 # Global instance
 transcription_service = TranscriptionService()
-

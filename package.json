@@ -11,7 +11,10 @@
     "dev:python": "cd python-service && if [ -d venv ]; then venv/bin/python app.py; else echo '⚠️  Python venv not found. Please run: cd python-service && python3 -m venv venv && source venv/bin/activate && pip install -r requirements.txt'; exit 1; fi",
     "build": "cd frontend && npm install && npm run build",
     "install:all": "npm install && cd frontend && npm install && cd ../python-service && if [ ! -d venv ]; then echo '📦 Creating Python virtual environment...' && if command -v python3.12 &> /dev/null; then python3.12 -m venv venv && echo '✅ Virtual environment created with Python 3.12'; elif command -v python3.11 &> /dev/null; then python3.11 -m venv venv && echo '✅ Virtual environment created with Python 3.11'; else python3 -m venv venv && echo '⚠️  Using Python 3.13 (some packages may have compatibility issues)'; fi; fi && if ! command -v ffmpeg &> /dev/null; then echo '⚠️  FFmpeg not found. Installing via Homebrew...' && brew install ffmpeg || echo '⚠️  Please install FFmpeg manually: brew install ffmpeg'; fi && echo '📦 Installing Python dependencies...' && venv/bin/pip install --upgrade pip setuptools wheel && venv/bin/pip install -r requirements.txt && echo '✅ All dependencies installed!'",
-    "start:all": "concurrently --names \"PYTHON,NODE,FRONTEND\" --prefix-colors \"yellow,blue,green\" \"npm run dev:python\" \"npm run dev\" \"npm run dev:frontend\"",
+    "start:all": "concurrently --names \"PYTHON,NODE,FRONTEND,ELECTRON\" --prefix-colors \"yellow,blue,green,magenta\" \"npm run dev:python\" \"npm run dev\" \"npm run dev:frontend\" \"npm run keyboard:electron\"",
+    "start:all:no-electron": "concurrently --names \"PYTHON,NODE,FRONTEND\" --prefix-colors \"yellow,blue,green\" \"npm run dev:python\" \"npm run dev\" \"npm run dev:frontend\"",
+    "keyboard:electron": "cd frontend && npm install && npm run electron",
+    "keyboard:iohook": "node frontend/electron/keyboard-listener.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [

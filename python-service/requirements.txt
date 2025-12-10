@@ -2,10 +2,13 @@ fastapi>=0.115.0
 uvicorn[standard]>=0.32.0
 python-multipart>=0.0.12
 websockets>=13.1
-faster-whisper>=0.10.0
-torch>=2.6.0
+mlx-whisper>=0.1.0
+mlx>=0.19.0
 numpy>=1.26.0
 python-dotenv>=1.0.0
 pydantic>=2.10.0
 aiofiles>=24.1.0
+ffmpeg-python>=0.2.0
+silero-vad>=4.0.0
+torch>=2.0.0
 

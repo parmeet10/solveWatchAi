@@ -27,11 +27,26 @@ export function useWebSocket(onTranscription, onError) {
     }
 
     // Initialize Socket.io connection
-    // Use window.location.origin so it works with Vite proxy and network access
-    // Vite proxy will forward /socket.io requests to the backend
+    // Always use Vite proxy - it should handle WebSocket upgrades from HTTPS to HTTP
     const socketUrl = window.location.origin;
+    const hostname = window.location.hostname;
+    const protocol = window.location.protocol;
 
+    console.log('[WebSocket] Initializing connection...');
+    console.log('[WebSocket] Target URL:', `${socketUrl}/stream-transcribe`);
+    console.log('[WebSocket] Current location:', {
+      href: window.location.href,
+      origin: socketUrl,
+      hostname,
+      protocol,
+      port: window.location.port,
+    });
+    console.log('[WebSocket] Socket.io will use path: /socket.io');
+
+    // Socket.io connection with explicit path configuration
+    // The path should be '/socket.io' for the proxy to work correctly
     socketRef.current = io(`${socketUrl}/stream-transcribe`, {
+      path: '/socket.io',
       transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionDelay: 1000,
@@ -39,6 +54,10 @@ export function useWebSocket(onTranscription, onError) {
       reconnectionAttempts: Infinity,
       timeout: 20000,
       autoConnect: true,
+      forceNew: false,
+      // Additional options for better connection handling
+      upgrade: true,
+      rememberUpgrade: false,
     });
 
     const socket = socketRef.current;
@@ -57,9 +76,38 @@ export function useWebSocket(onTranscription, onError) {
 
     socket.on('connect_error', (error) => {
       console.error('[WebSocket] Connection error:', error);
+      console.error('[WebSocket] Error details:', {
+        message: error.message,
+        type: error.type,
+        description: error.description,
+        context: error.context,
+        url: socketUrl,
+        socketId: socket.id,
+        transport: socket.io?.engine?.transport?.name,
+        protocol: window.location.protocol,
+        hostname: window.location.hostname,
+        port: window.location.port,
+      });
       setConnected(false);
+
+      // Provide more helpful error message
+      let errorMessage = `Failed to connect to server: ${error.message}`;
+      if (
+        error.message?.includes('websocket') ||
+        error.type === 'TransportError'
+      ) {
+        errorMessage += '\n\nPossible causes:\n';
+        errorMessage += '1. Backend server might not be running on port 4000\n';
+        errorMessage += '2. Vite proxy might not be configured correctly\n';
+        errorMessage += '3. Firewall might be blocking the connection\n';
+        errorMessage += '4. Mixed content (HTTPS to HTTP) might be blocked\n';
+        errorMessage += '5. Check browser console for more details\n';
+        errorMessage += `\nTrying to connect to: ${socketUrl}/stream-transcribe`;
+        errorMessage += `\nBackend should be at: http://localhost:4000`;
+      }
+
       if (onErrorRef.current) {
-        onErrorRef.current(new Error('Failed to connect to server'));
+        onErrorRef.current(new Error(errorMessage));
       }
     });
 
@@ -187,6 +235,56 @@ export function useWebSocket(onTranscription, onError) {
     }
   };
 
+  const flushBuffer = (cutoffTimestamp = null, gracePeriodMs = 500) => {
+    return new Promise((resolve, reject) => {
+      if (!socketRef.current || !socketRef.current.connected) {
+        reject(new Error('Not connected to server'));
+        return;
+      }
+
+      if (!streamingRef.current) {
+        reject(new Error('Stream not started'));
+        return;
+      }
+
+      console.log(
+        `[WebSocket] Flushing buffer with cutoff timestamp: ${cutoffTimestamp}`,
+      );
+
+      // Set up one-time listener for flush confirmation
+      const onFlushComplete = (data) => {
+        socketRef.current.off('buffer_flushed', onFlushComplete);
+        socketRef.current.off('error', onError);
+        console.log('[WebSocket] Buffer flushed successfully');
+        resolve(data);
+      };
+
+      const onError = (error) => {
+        socketRef.current.off('buffer_flushed', onFlushComplete);
+        socketRef.current.off('error', onError);
+        console.error('[WebSocket] Error flushing buffer:', error);
+        reject(new Error(error.message || 'Failed to flush buffer'));
+      };
+
+      socketRef.current.once('buffer_flushed', onFlushComplete);
+      socketRef.current.once('error', onError);
+
+      // Send flush request
+      socketRef.current.emit('flush_buffer', {
+        cutoffTimestamp: cutoffTimestamp,
+        gracePeriodMs: gracePeriodMs,
+      });
+
+      // Timeout after 3 seconds
+      setTimeout(() => {
+        socketRef.current.off('buffer_flushed', onFlushComplete);
+        socketRef.current.off('error', onError);
+        console.warn('[WebSocket] Flush timeout, resolving anyway');
+        resolve({ timeout: true });
+      }, 3000);
+    });
+  };
+
   const getSessionId = () => {
     return sessionIdRef.current;
   };
@@ -197,6 +295,7 @@ export function useWebSocket(onTranscription, onError) {
     startStream,
     sendAudioChunk,
     endStream,
+    flushBuffer,
     getSessionId,
   };
 }

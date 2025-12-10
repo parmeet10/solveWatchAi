@@ -68,11 +68,17 @@ class TranscriptionStorageService {
   }
 
   /**
-   * Clear transcriptions for a session
+   * Clear transcriptions for a session (keeps session alive for continued recording)
    * @param {string} sessionId - Session ID
    */
   clearSession(sessionId) {
-    this.sessions.delete(sessionId);
+    const session = this.sessions.get(sessionId);
+    if (session) {
+      // Clear transcriptions but keep the session alive
+      session.transcriptions = [];
+      // Optionally update createdAt to track when it was last cleared
+      // session.lastClearedAt = new Date();
+    }
   }
 
   /**

@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { io } from 'socket.io-client';
 import UploadSection from './components/UploadSection';
 import DataSection from './components/DataSection';
 import ApiKeyConfig from './components/ApiKeyConfig';
@@ -17,6 +18,7 @@ function App() {
   const [apiKeysConfigured, setApiKeysConfigured] = useState(false);
   const [showEmailConfig, setShowEmailConfig] = useState(false);
   const [emailConfigured, setEmailConfigured] = useState(false);
+  const socketRef = useRef(null);
 
   const checkApiKeysConfig = useCallback(async () => {
     try {
@@ -106,11 +108,8 @@ function App() {
         // Send to backend
         await apiService.processClipboard(clipboardText);
 
-        // Refresh data to show the new result
-        setTimeout(() => {
-          fetchData();
-          setProcessingClipboard(false);
-        }, 1000);
+        // Data will be updated via WebSocket, no need to poll
+        setProcessingClipboard(false);
       } catch (err) {
         console.error('Error processing clipboard:', err);
         setProcessingClipboard(false);
@@ -132,14 +131,59 @@ function App() {
     }
   }, [processClipboardContent]);
 
+  // WebSocket connection for real-time data updates
   useEffect(() => {
     // Check API keys configuration on startup
     checkApiKeysConfig();
     checkEmailConfig();
+
+    // Initial data fetch
     fetchData();
-    const interval = setInterval(fetchData, 2000); // Refresh every 2 seconds
-    return () => clearInterval(interval);
-  }, [fetchData, checkApiKeysConfig, checkEmailConfig]);
+
+    // Setup WebSocket connection for real-time updates
+    const socketUrl = window.location.origin;
+    console.log('[DataWebSocket] Connecting to:', `${socketUrl}/data-updates`);
+
+    socketRef.current = io(`${socketUrl}/data-updates`, {
+      path: '/socket.io',
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      reconnectionAttempts: Infinity,
+    });
+
+    const socket = socketRef.current;
+
+    socket.on('connect', () => {
+      console.log('[DataWebSocket] Connected');
+    });
+
+    socket.on('disconnect', () => {
+      console.log('[DataWebSocket] Disconnected');
+    });
+
+    socket.on('connect_error', (error) => {
+      console.error('[DataWebSocket] Connection error:', error);
+    });
+
+    // Listen for data updates
+    socket.on('data_update', (payload) => {
+      console.log('[DataWebSocket] Data update received:', payload.type);
+      if (payload.type === 'initial' || payload.type === 'update') {
+        setProcessedData(payload.data || []);
+        setLoading(false);
+      }
+    });
+
+    // Cleanup on unmount
+    return () => {
+      if (socket) {
+        socket.disconnect();
+        socketRef.current = null;
+      }
+    };
+  }, [checkApiKeysConfig, checkEmailConfig]);
 
   // Monitor clipboard changes - check when window gains focus (user copied in another app)
   useEffect(() => {
@@ -276,7 +320,8 @@ function App() {
   }, [processClipboard]);
 
   const handleUploadSuccess = () => {
-    fetchData();
+    // Data will be updated via WebSocket automatically
+    // No need to manually fetch
   };
 
   return (

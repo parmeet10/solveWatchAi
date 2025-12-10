@@ -10,6 +10,7 @@ import uvicorn
 from dotenv import load_dotenv
 from transcription import transcription_service
 from streaming import streaming_manager
+from vad import vad_service
 
 # Load environment variables
 load_dotenv()
@@ -36,10 +37,16 @@ app.add_middleware(
 # Load transcription model on startup
 @app.on_event("startup")
 async def startup_event():
-    """Initialize transcription service"""
+    """Initialize transcription service and VAD"""
     try:
         transcription_service.load_model()
         logger.info("Transcription service initialized")
+        
+        # VAD is initialized when imported (vad_service)
+        if vad_service.enabled:
+            logger.info("VAD service initialized and enabled")
+        else:
+            logger.info("VAD service is disabled")
     except Exception as e:
         logger.error(f"Failed to initialize transcription service: {e}")
 
@@ -55,7 +62,10 @@ async def health():
     """Health check endpoint"""
     return {
         "status": "healthy",
-        "model_loaded": transcription_service.model is not None
+        "model_loaded": True,  # mlx-whisper loads models on-demand
+        "model_name": transcription_service.model_path,
+        "vad_enabled": vad_service.enabled,
+        "vad_threshold": vad_service.threshold if vad_service.enabled else None
     }
 
 

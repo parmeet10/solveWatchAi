@@ -123,13 +123,13 @@ class ApiService {
     return response.json();
   }
 
-  async processTranscription(sessionId) {
+  async processTranscription(sessionId, cutoffTimestamp = null) {
     const response = await fetch(`${API_BASE_URL}/transcription/process`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ sessionId }),
+      body: JSON.stringify({ sessionId, cutoffTimestamp }),
     });
 
     if (!response.ok) {
