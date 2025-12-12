@@ -15,12 +15,16 @@ from vad import vad_service
 # Load environment variables
 load_dotenv()
 
-# Configure logging
+# Configure logging - reduce verbosity for uvicorn
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format='%(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# Suppress uvicorn access logs and reduce verbosity
+logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+logging.getLogger("uvicorn").setLevel(logging.WARNING)
 
 # Initialize FastAPI app
 app = FastAPI(title="Speech-to-Text Transcription Service")
@@ -40,15 +44,12 @@ async def startup_event():
     """Initialize transcription service and VAD"""
     try:
         transcription_service.load_model()
-        logger.info("Transcription service initialized")
         
         # VAD is initialized when imported (vad_service)
-        if vad_service.enabled:
-            logger.info("VAD service initialized and enabled")
-        else:
-            logger.info("VAD service is disabled")
+        vad_status = "enabled" if vad_service.enabled else "disabled"
+        logger.info(f"✅ Transcription service ready (VAD: {vad_status})")
     except Exception as e:
-        logger.error(f"Failed to initialize transcription service: {e}", exc_info=True)
+        logger.error(f"❌ Failed to initialize transcription service: {e}", exc_info=True)
 
 # Add shutdown handler
 @app.on_event("shutdown")
@@ -141,6 +142,21 @@ if __name__ == "__main__":
     port = int(os.getenv("PYTHON_SERVICE_PORT", "8000"))
     host = os.getenv("PYTHON_SERVICE_HOST", "0.0.0.0")
     
-    logger.info(f"Starting transcription service on {host}:{port}")
-    uvicorn.run(app, host=host, port=port, log_level="info")
+    # Startup banner
+    print("\n" + "="*60)
+    print("  Python Transcription Service Starting")
+    print("="*60)
+    logger.info(f"🚀 Starting on {host}:{port}")
+    logger.info(f"   Local:  http://localhost:{port}")
+    if host == "0.0.0.0":
+        import socket
+        try:
+            local_ip = socket.gethostbyname(socket.gethostname())
+            if local_ip != "127.0.0.1":
+                logger.info(f"   Network: http://{local_ip}:{port}")
+        except:
+            pass
+    logger.info("-"*60)
+    
+    uvicorn.run(app, host=host, port=port, log_level="warning", access_log=False)
 

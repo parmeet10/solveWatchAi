@@ -36,12 +36,6 @@ function createWindow() {
   if (process.platform === 'darwin') {
     app.dock.hide();
   }
-
-  console.log('🎹 Global keyboard shortcut listener started');
-  console.log('📝 Press P+P (double P) to trigger audio processing');
-  console.log(
-    '💡 Make sure this window has focus or use Command+Shift+P as alternative',
-  );
 }
 
 // Listen for keydown events from renderer
@@ -57,7 +51,6 @@ ipcMain.on('keydown', (event, key) => {
     // Check if we have a recent 'p' press
     if (keyPressHistory.length >= 1) {
       // Double press detected!
-      console.log('🎯 P+P detected! Triggering processing...');
       keyPressHistory = []; // Reset
       if (!isProcessing) {
         handleProcessing();
@@ -71,7 +64,6 @@ ipcMain.on('keydown', (event, key) => {
 
 async function handleProcessing() {
   if (isProcessing) {
-    console.log('⏳ Already processing, please wait...');
     return;
   }
 
@@ -86,7 +78,6 @@ async function handleProcessing() {
 function setupGlobalShortcut() {
   // Register Command+Shift+P as an alternative shortcut (works globally)
   const ret = globalShortcut.register('CommandOrControl+Shift+P', () => {
-    console.log('🎯 Command+Shift+P detected! Triggering processing...');
     if (!isProcessing) {
       handleProcessing();
     }
@@ -94,12 +85,20 @@ function setupGlobalShortcut() {
 
   if (!ret) {
     console.error('❌ Failed to register global shortcut');
-  } else {
-    console.log('✅ Global shortcut registered: Command+Shift+P');
   }
 }
 
 app.whenReady().then(() => {
+  // Startup banner
+  console.log('\n' + '='.repeat(60));
+  console.log('  Electron Keyboard Shortcut Service');
+  console.log('='.repeat(60));
+  console.log('✅ Service started');
+  console.log('📝 Shortcuts:');
+  console.log('   • P+P (double P) - Trigger audio processing');
+  console.log('   • Command+Shift+P - Alternative shortcut');
+  console.log('-'.repeat(60));
+  
   createWindow();
   setupGlobalShortcut();
 

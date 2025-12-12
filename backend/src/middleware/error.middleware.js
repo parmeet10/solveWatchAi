@@ -1,6 +1,4 @@
 import multer from 'multer';
-import fs from 'fs';
-import path from 'path';
 import logger from '../utils/logger.js';
 
 const log = logger('ErrorMiddleware');
@@ -24,24 +22,12 @@ export const errorHandler = (err, req, res, next) => {
 };
 
 export const notFoundHandler = (req, res) => {
-  // Skip API routes - return 404 JSON
-  if (req.path.startsWith('/api')) {
-    return res.status(404).json({
-      success: false,
-      error: 'Route not found',
-    });
-  }
-
-  // For all other routes, serve the React app (SPA routing)
-  const frontendDistPath = path.join(process.cwd(), 'frontend', 'dist');
-  const indexPath = path.join(frontendDistPath, 'index.html');
-
-  if (fs.existsSync(indexPath)) {
-    return res.sendFile(indexPath);
-  }
-
+  // Backend only serves API endpoints and WebSocket connections
+  // Frontend is served by Vite dev server at https://192.168.178.46:3000
   res.status(404).json({
     success: false,
     error: 'Route not found',
+    message:
+      'Backend only serves API endpoints. Access frontend at https://192.168.178.46:3000',
   });
 };

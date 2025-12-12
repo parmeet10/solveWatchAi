@@ -1,7 +1,5 @@
 import express from 'express';
 import cors from 'cors';
-import fs from 'fs';
-import path from 'path';
 import dotenv from 'dotenv';
 import imageRoutes from './routes/image.routes.js';
 import contextRoutes from './routes/context.routes.js';
@@ -26,22 +24,15 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// API Routes (must be before static files)
+// API Routes
 app.use('/api', imageRoutes);
 app.use('/api', contextRoutes);
 app.use('/api', clipboardRoutes);
 app.use('/api', configRoutes);
 app.use('/api', transcribeRoutes);
 
-// Serve static files from frontend/dist (React build)
-const frontendDistPath = path.join(process.cwd(), 'frontend', 'dist');
-if (fs.existsSync(frontendDistPath)) {
-  app.use(express.static(frontendDistPath));
-} else {
-  log.warn(
-    'Frontend dist folder not found. Run "npm run build" to build the React app.',
-  );
-}
+// Frontend is served by Vite dev server at https://192.168.178.46:3000
+// Backend only serves API endpoints and WebSocket connections
 
 // Error handling middleware (must be last)
 app.use(notFoundHandler);

@@ -204,7 +204,6 @@ function LiveStreamingTranscribe() {
 
   const startRecording = async () => {
     try {
-
       // Check if getUserMedia is available
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         const isHTTPS = window.location.protocol === 'https:';
@@ -244,6 +243,10 @@ function LiveStreamingTranscribe() {
       streamRef.current = stream;
 
       // Start WebSocket stream first
+      console.log(
+        '[Frontend] Starting WebSocket stream, connected:',
+        connected,
+      );
       startStream();
 
       // Wait for stream to actually start
@@ -256,7 +259,6 @@ function LiveStreamingTranscribe() {
       if (!streamingRef.current) {
         throw new Error('Stream did not start in time');
       }
-
 
       // Use Web Audio API to capture raw PCM audio
       const audioContext = new (window.AudioContext ||
@@ -271,7 +273,6 @@ function LiveStreamingTranscribe() {
 
       const source = audioContext.createMediaStreamSource(stream);
       const processor = audioContext.createScriptProcessor(4096, 1, 1);
-      );
 
       let chunkCount = 0;
       let skippedCount = 0;
@@ -347,7 +348,6 @@ function LiveStreamingTranscribe() {
 
   const stopRecording = () => {
     try {
-
       // Disconnect audio processor
       if (mediaRecorderRef.current) {
         const { processor, audioContext, source } = mediaRecorderRef.current;
@@ -449,8 +449,14 @@ function LiveStreamingTranscribe() {
             className="record-button start"
             onClick={startRecording}
             disabled={!connected}
+            title={
+              !connected
+                ? 'Waiting for server connection...'
+                : 'Start recording'
+            }
           >
             🎙️ Start Recording
+            {!connected && ' (Connecting...)'}
           </button>
         ) : (
           <button className="record-button stop" onClick={stopRecording}>

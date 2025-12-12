@@ -34,13 +34,13 @@ class TranscriptionService:
         
         # mlx-whisper automatically uses MPS on Apple Silicon (M1/M2/M3)
         # No need to specify device - MLX handles it automatically
-        logger.info(f"Initializing MLX Whisper service (MPS acceleration enabled on Apple Silicon, model: {self.model_path})")
+        # Only log during actual initialization, not on import
         
     def load_model(self):
         """Load the Whisper model - mlx-whisper loads models on-demand, so this is a no-op"""
         # mlx-whisper.transcribe() loads the model automatically on first use
         # Models are cached by HuggingFace, so subsequent calls are fast
-        logger.info(f"MLX Whisper model '{self.model_path}' will be loaded on first transcription")
+        # Model will be loaded on first transcription request
     
     def transcribe_file(
         self, 
@@ -60,7 +60,7 @@ class TranscriptionService:
             Tuple of (transcribed_text, confidence_score)
         """
         try:
-            logger.info(f"Transcribing file: {audio_path}")
+            # Transcribing file (debug only)
             
             # mlx-whisper.transcribe() function - loads model automatically
             # It automatically handles chunking and returns full transcription
@@ -96,7 +96,7 @@ class TranscriptionService:
             if segment_count == 0 and full_text.strip():
                 avg_confidence = 0.8
             
-            logger.info(f"Transcription completed. Length: {len(full_text)} chars, Confidence: {avg_confidence:.2f}")
+            # Transcription completed (debug only)
             return full_text.strip(), avg_confidence
             
         except Exception as e:
