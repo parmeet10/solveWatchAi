@@ -11,7 +11,6 @@ from typing import Dict, Optional
 from fastapi import WebSocket
 from starlette.websockets import WebSocketDisconnect
 from transcription import transcription_service
-from vad import vad_service
 
 logger = logging.getLogger(__name__)
 
@@ -37,18 +36,17 @@ class StreamingSession:
     def __init__(self, session_id: str, websocket: WebSocket):
         self.session_id = session_id
         self.websocket = websocket
-        self.audio_buffer = bytearray()
-        self.speech_buffer = bytearray()  # Buffer for detected speech
+        self.audio_buffer = bytearray()  # Buffer for audio chunks (already filtered by client VAD)
         self.is_active = True
         self.last_transcription_time = 0
-        self.chunk_interval = 3  # Process chunks every 3 seconds
-        self.consecutive_silence_chunks = 0
-        self.min_speech_chunks = 2  # Minimum chunks with speech before processing
+        self.chunk_interval = 1.5  # Process chunks every 1.5 seconds (faster feedback)
+        self.silence_timeout = 0.8  # Trigger transcription after 0.8s of silence (no chunks received)
+        self.last_chunk_time = time.time()  # Track when last chunk was received
         self.process_until_timestamp = None  # Timestamp cutoff for flush operations
-        self.pending_chunks = []  # Store chunks with timestamps during flush grace period
+        self.silence_check_task = None  # Background task for silence detection
         
     async def process_audio_chunk(self, audio_data: bytes, chunk_timestamp: Optional[float] = None):
-        """Process incoming audio chunk with VAD"""
+        """Process incoming audio chunk (already filtered by client VAD)"""
         try:
             # If we're in flush mode, check if this chunk should be processed
             if self.process_until_timestamp is not None:
@@ -61,38 +59,30 @@ class StreamingSession:
                     logger.debug(f"Session {self.session_id}: Ignoring chunk after cutoff timestamp ({chunk_timestamp} > {self.process_until_timestamp})")
                     return
             
+            # Add chunk to buffer (client VAD already filtered out silence)
             self.audio_buffer.extend(audio_data)
             chunk_size = len(audio_data)
+            self.last_chunk_time = time.time()  # Update last chunk timestamp
             
-            # Check for speech activity using VAD
-            is_speech = vad_service.is_speech(audio_data, sample_rate=16000)
+            # Log chunk received - immediate
+            buffer_kb = len(self.audio_buffer) / 1024
+            log_chunk(self.session_id, chunk_size, "RECEIVED", f"buf:{buffer_kb:.1f}KB")
             
-            if is_speech:
-                # Speech detected - add to speech buffer
-                self.speech_buffer.extend(audio_data)
-                self.consecutive_silence_chunks = 0
-                
-                # Log speech detection - immediate
-                speech_buffer_kb = len(self.speech_buffer) / 1024
-                log_chunk(self.session_id, chunk_size, "SPEECH", f"buf:{speech_buffer_kb:.1f}KB")
-            else:
-                # Silence detected
-                self.consecutive_silence_chunks += 1
-                
-                # Log silence detection - immediate
-                log_chunk(self.session_id, chunk_size, "SILENCE", f"sil:{self.consecutive_silence_chunks}")
-                
-                # If we have accumulated speech and hit silence, process the speech buffer
-                if len(self.speech_buffer) > 0 and self.consecutive_silence_chunks >= 2:
-                    await self._process_speech_buffer()
+            # Process if we have enough accumulated audio (1.5 seconds at 16kHz = 48000 samples = 96000 bytes for 16-bit)
+            min_chunk_size = int(16000 * 2 * self.chunk_interval)  # 16kHz * 2 bytes * seconds
             
-            # Also process if we have enough accumulated speech (3 seconds at 16kHz = 48000 samples = 96000 bytes for 16-bit)
-            min_chunk_size = 16000 * 2 * self.chunk_interval  # 16kHz * 2 bytes * seconds
-            
-            if len(self.speech_buffer) >= min_chunk_size:
-                buffer_kb = len(self.speech_buffer) / 1024
+            if len(self.audio_buffer) >= min_chunk_size:
+                # Cancel silence check since we're processing due to threshold
+                if self.silence_check_task and not self.silence_check_task.done():
+                    self.silence_check_task.cancel()
+                buffer_kb = len(self.audio_buffer) / 1024
                 print(f"[{time.strftime('%H:%M:%S', time.localtime())}] [{self.session_id[:8]}] THRESHOLD | buf:{buffer_kb:.1f}KB", flush=True)
-                await self._process_speech_buffer()
+                await self._process_audio_buffer()
+            
+            # Cancel any existing silence check and start new one
+            if self.silence_check_task and not self.silence_check_task.done():
+                self.silence_check_task.cancel()
+            self.silence_check_task = asyncio.create_task(self._check_silence_timeout())
                 
         except WebSocketDisconnect:
             # WebSocket disconnected (debug only)
@@ -111,27 +101,45 @@ class StreamingSession:
             except:
                 pass
     
-    async def _process_speech_buffer(self):
-        """Process accumulated speech buffer"""
-        if len(self.speech_buffer) == 0:
+    async def _check_silence_timeout(self):
+        """Check if silence timeout has been reached (no chunks received)"""
+        try:
+            await asyncio.sleep(self.silence_timeout)
+            # Check if enough time has passed since last chunk and buffer has content
+            time_since_last_chunk = time.time() - self.last_chunk_time
+            if time_since_last_chunk >= self.silence_timeout and len(self.audio_buffer) > 0:
+                # Silence detected - process accumulated buffer
+                min_bytes = int(16000 * 2 * 0.25)  # Minimum 250ms
+                if len(self.audio_buffer) >= min_bytes:
+                    buffer_kb = len(self.audio_buffer) / 1024
+                    timestamp = time.strftime("%H:%M:%S", time.localtime())
+                    session_short = self.session_id[:8] if self.session_id else "unknown"
+                    print(f"[{timestamp}] [{session_short}] SILENCE | buf:{buffer_kb:.1f}KB (silence detected)", flush=True)
+                    await self._process_audio_buffer()
+        except asyncio.CancelledError:
+            # Task was cancelled (new chunk arrived or processing triggered) - this is expected
+            pass
+        except Exception as e:
+            logger.error(f"Error in silence check for session {self.session_id}: {e}")
+    
+    async def _process_audio_buffer(self):
+        """Process accumulated audio buffer (already filtered by client VAD)"""
+        if len(self.audio_buffer) == 0:
             return
         
         try:
-            buffer_size = len(self.speech_buffer)
+            buffer_size = len(self.audio_buffer)
             buffer_kb = buffer_size / 1024
             
-            # Check if we have sufficient speech (avoid processing very short clips)
-            if not vad_service.has_sufficient_speech(self.speech_buffer, sample_rate=16000, min_speech_duration_ms=250):
-                # Clear buffer if insufficient speech
-                timestamp = time.strftime("%H:%M:%S", time.localtime())
-                session_short = self.session_id[:8] if self.session_id else "unknown"
-                print(f"[{timestamp}] [{session_short}] ⚠️  Insufficient speech, clearing {buffer_kb:.1f}KB", flush=True)
-                self.speech_buffer.clear()
+            # Minimum audio duration check (250ms at 16kHz = 8000 bytes)
+            min_bytes = 16000 * 2 * 0.25  # 16kHz * 2 bytes * 0.25 seconds
+            if buffer_size < min_bytes:
+                # Buffer too small, wait for more data
                 return
             
-            # Process the speech buffer
-            chunk_to_process = bytes(self.speech_buffer)
-            self.speech_buffer.clear()
+            # Process the audio buffer
+            chunk_to_process = bytes(self.audio_buffer)
+            self.audio_buffer.clear()
             
             # Log processing start - immediate
             timestamp = time.strftime("%H:%M:%S", time.localtime())
@@ -160,7 +168,7 @@ class StreamingSession:
             # WebSocket disconnected (debug only)
             self.is_active = False
         except Exception as e:
-            logger.error(f"Error processing speech buffer for session {self.session_id}: {e}")
+            logger.error(f"Error processing audio buffer for session {self.session_id}: {e}")
             error_msg = {
                 "type": "error",
                 "sessionId": self.session_id,
@@ -175,39 +183,45 @@ class StreamingSession:
     
     async def flush_buffer(self):
         """Flush remaining audio buffer"""
-        # Process any remaining speech in the buffer
-        if len(self.speech_buffer) > 0:
-            await self._process_speech_buffer()
+        # Cancel silence check task
+        if self.silence_check_task and not self.silence_check_task.done():
+            self.silence_check_task.cancel()
+            try:
+                await self.silence_check_task
+            except asyncio.CancelledError:
+                pass
         
-        # Also check audio buffer for any remaining speech
-        if len(self.audio_buffer) > 16000:  # At least 1 second of audio
-            # Check if remaining audio contains speech
-            if vad_service.has_sufficient_speech(self.audio_buffer, sample_rate=16000, min_speech_duration_ms=250):
-                try:
-                    text, confidence = transcription_service.transcribe_chunk(
-                        bytes(self.audio_buffer),
-                        sample_rate=16000
-                    )
+        # Process any remaining audio in the buffer
+        if len(self.audio_buffer) > 0:
+            await self._process_audio_buffer()
+        
+        # Also check if there's any remaining audio (minimum 250ms)
+        min_bytes = 16000 * 2 * 0.25  # 250ms at 16kHz
+        if len(self.audio_buffer) >= min_bytes:
+            try:
+                text, confidence = transcription_service.transcribe_chunk(
+                    bytes(self.audio_buffer),
+                    sample_rate=16000
+                )
+                
+                if text.strip():
+                    result = {
+                        "type": "transcription",
+                        "sessionId": self.session_id,
+                        "text": text,
+                        "confidence": confidence,
+                        "timestamp": time.time(),
+                        "final": True
+                    }
                     
-                    if text.strip():
-                        result = {
-                            "type": "transcription",
-                            "sessionId": self.session_id,
-                            "text": text,
-                            "confidence": confidence,
-                            "timestamp": time.time(),
-                            "final": True
-                        }
-                        
-                        await self.websocket.send_json(result)
-                        log_transcription(self.session_id, text, confidence)
-                except WebSocketDisconnect:
-                    self.is_active = False
-                except Exception as e:
-                    logger.error(f"Error flushing buffer for session {self.session_id}: {e}")
+                    await self.websocket.send_json(result)
+                    log_transcription(self.session_id, text, confidence)
+            except WebSocketDisconnect:
+                self.is_active = False
+            except Exception as e:
+                logger.error(f"Error flushing buffer for session {self.session_id}: {e}")
         
         self.audio_buffer.clear()
-        self.speech_buffer.clear()
     
     async def flush_buffer_with_cutoff(self, cutoff_timestamp: float, grace_period_ms: int = 500):
         """
@@ -224,6 +238,14 @@ class StreamingSession:
         session_short = self.session_id[:8] if self.session_id else "unknown"
         print(f"[{timestamp}] [{session_short}] 🧹 Flush (grace:{grace_period_ms}ms)", flush=True)
         
+        # Cancel silence check task
+        if self.silence_check_task and not self.silence_check_task.done():
+            self.silence_check_task.cancel()
+            try:
+                await self.silence_check_task
+            except asyncio.CancelledError:
+                pass
+        
         # Set cutoff timestamp
         self.process_until_timestamp = cutoff_timestamp
         
@@ -233,41 +255,39 @@ class StreamingSession:
         
         # Grace period ended, processing remaining buffers (debug only)
         
-        # Process any remaining speech in the buffer (only chunks before cutoff)
-        if len(self.speech_buffer) > 0:
-            await self._process_speech_buffer()
+        # Process any remaining audio in the buffer (only chunks before cutoff)
+        if len(self.audio_buffer) > 0:
+            await self._process_audio_buffer()
         
-        # Also check audio buffer for any remaining speech
-        if len(self.audio_buffer) > 16000:  # At least 1 second of audio
-            # Check if remaining audio contains speech
-            if vad_service.has_sufficient_speech(self.audio_buffer, sample_rate=16000, min_speech_duration_ms=250):
-                try:
-                    text, confidence = transcription_service.transcribe_chunk(
-                        bytes(self.audio_buffer),
-                        sample_rate=16000
-                    )
+        # Also check if there's any remaining audio (minimum 250ms)
+        min_bytes = 16000 * 2 * 0.25  # 250ms at 16kHz
+        if len(self.audio_buffer) >= min_bytes:
+            try:
+                text, confidence = transcription_service.transcribe_chunk(
+                    bytes(self.audio_buffer),
+                    sample_rate=16000
+                )
+                
+                if text.strip():
+                    result = {
+                        "type": "transcription",
+                        "sessionId": self.session_id,
+                        "text": text,
+                        "confidence": confidence,
+                        "timestamp": time.time(),
+                        "final": True
+                    }
                     
-                    if text.strip():
-                        result = {
-                            "type": "transcription",
-                            "sessionId": self.session_id,
-                            "text": text,
-                            "confidence": confidence,
-                            "timestamp": time.time(),
-                            "final": True
-                        }
-                        
-                        await self.websocket.send_json(result)
-                        # Final transcription sent (debug only)
-                except WebSocketDisconnect:
-                    # WebSocket disconnected (debug only)
-                    self.is_active = False
-                except Exception as e:
-                    logger.error(f"Error flushing buffer for session {self.session_id}: {e}")
+                    await self.websocket.send_json(result)
+                    # Final transcription sent (debug only)
+            except WebSocketDisconnect:
+                # WebSocket disconnected (debug only)
+                self.is_active = False
+            except Exception as e:
+                logger.error(f"Error flushing buffer for session {self.session_id}: {e}")
         
-        # Clear buffers
+        # Clear buffer
         self.audio_buffer.clear()
-        self.speech_buffer.clear()
         
         # Reset cutoff timestamp to allow new chunks
         self.process_until_timestamp = None

@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useWebSocket } from '../hooks/useWebSocket';
 import apiService from '../services/api';
+import { vadService } from '../utils/vadService';
 import './LiveStreamingTranscribe.css';
 
 function LiveStreamingTranscribe() {
@@ -289,23 +290,12 @@ function LiveStreamingTranscribe() {
 
         const inputData = event.inputBuffer.getChannelData(0);
 
-        // Check if there's actual audio data (not silence) - lowered threshold
-        let hasAudio = false;
-        let maxAmplitude = 0;
-        for (let i = 0; i < inputData.length; i++) {
-          const abs = Math.abs(inputData[i]);
-          if (abs > maxAmplitude) {
-            maxAmplitude = abs;
-          }
-          if (abs > 0.001) {
-            // Lowered threshold from 0.01 to 0.001
-            hasAudio = true;
-          }
-        }
-
-        if (!hasAudio) {
+        // Use VAD to check if chunk contains speech
+        const isSpeech = vadService.isSpeech(inputData, 16000);
+        
+        if (!isSpeech) {
           skippedCount++;
-          return; // Skip silent chunks
+          return; // Skip non-speech chunks
         }
 
         // Convert Float32 to Int16 PCM
@@ -315,7 +305,7 @@ function LiveStreamingTranscribe() {
           pcmData[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
         }
 
-        // Send PCM chunk
+        // Send PCM chunk (only speech chunks pass through VAD filter)
         sendAudioChunk(pcmData.buffer);
       };
 
