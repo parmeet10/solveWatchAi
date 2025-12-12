@@ -166,137 +166,141 @@ function App() {
   }, [checkApiKeysConfig, checkEmailConfig]);
 
   // Monitor clipboard changes - check when window gains focus (user copied in another app)
-  useEffect(() => {
-    if (!autoClipboardEnabled) return;
+  // COMMENTED OUT: Clipboard monitoring feature disabled
+  // useEffect(() => {
+  //   if (!autoClipboardEnabled) return;
 
-    let isProcessing = false;
+  //   let isProcessing = false;
 
-    const checkClipboardOnFocus = async () => {
-      if (isProcessing) return;
+  //   const checkClipboardOnFocus = async () => {
+  //     if (isProcessing) return;
 
-      try {
-        const clipboardText = await navigator.clipboard.readText();
+  //     try {
+  //       const clipboardText = await navigator.clipboard.readText();
 
-        // Only process if clipboard content changed and is not empty
-        if (
-          clipboardText &&
-          clipboardText.trim() !== '' &&
-          clipboardText !== lastClipboardContent
-        ) {
-          setLastClipboardContent(clipboardText);
-          isProcessing = true;
-          await processClipboardContent(clipboardText);
-          isProcessing = false;
-        }
-      } catch (err) {
-        // Clipboard access might be denied, ignore silently
-      }
-    };
+  //       // Only process if clipboard content changed and is not empty
+  //       if (
+  //         clipboardText &&
+  //         clipboardText.trim() !== '' &&
+  //         clipboardText !== lastClipboardContent
+  //       ) {
+  //         setLastClipboardContent(clipboardText);
+  //         isProcessing = true;
+  //         await processClipboardContent(clipboardText);
+  //         isProcessing = false;
+  //       }
+  //     } catch (err) {
+  //       // Clipboard access might be denied, ignore silently
+  //     }
+  //   };
 
-    // Check clipboard when window gains focus (user might have copied in another app)
-    window.addEventListener('focus', checkClipboardOnFocus);
+  //   // Check clipboard when window gains focus (user might have copied in another app)
+  //   window.addEventListener('focus', checkClipboardOnFocus);
 
-    return () => {
-      window.removeEventListener('focus', checkClipboardOnFocus);
-    };
-  }, [autoClipboardEnabled, lastClipboardContent, processClipboardContent]);
+  //   return () => {
+  //     window.removeEventListener('focus', checkClipboardOnFocus);
+  //   };
+  // }, [autoClipboardEnabled, lastClipboardContent, processClipboardContent]);
 
   // Check clipboard when user clicks anywhere (user interaction allows clipboard access)
-  useEffect(() => {
-    if (!autoClipboardEnabled) return;
+  // COMMENTED OUT: Clipboard monitoring feature disabled
+  // useEffect(() => {
+  //   if (!autoClipboardEnabled) return;
 
-    let isProcessing = false;
-    let clickTimeout;
+  //   let isProcessing = false;
+  //   let clickTimeout;
 
-    const handleClick = async () => {
-      // Debounce - only check after a short delay
-      clearTimeout(clickTimeout);
-      clickTimeout = setTimeout(async () => {
-        if (isProcessing) return;
+  //   const handleClick = async () => {
+  //     // Debounce - only check after a short delay
+  //     clearTimeout(clickTimeout);
+  //     clickTimeout = setTimeout(async () => {
+  //       if (isProcessing) return;
 
-        try {
-          const clipboardText = await navigator.clipboard.readText();
+  //       try {
+  //         const clipboardText = await navigator.clipboard.readText();
 
-          // Only process if clipboard content changed and is not empty
-          if (
-            clipboardText &&
-            clipboardText.trim() !== '' &&
-            clipboardText !== lastClipboardContent
-          ) {
-            setLastClipboardContent(clipboardText);
-            isProcessing = true;
-            await processClipboardContent(clipboardText);
-            isProcessing = false;
-          }
-        } catch (err) {
-          // Clipboard access might be denied, ignore silently
-        }
-      }, 300); // Small delay to ensure clipboard is updated after copy
-    };
+  //         // Only process if clipboard content changed and is not empty
+  //         if (
+  //           clipboardText &&
+  //           clipboardText.trim() !== '' &&
+  //           clipboardText !== lastClipboardContent
+  //         ) {
+  //           setLastClipboardContent(clipboardText);
+  //           isProcessing = true;
+  //           await processClipboardContent(clipboardText);
+  //           isProcessing = false;
+  //         }
+  //       } catch (err) {
+  //         // Clipboard access might be denied, ignore silently
+  //       }
+  //     }, 300); // Small delay to ensure clipboard is updated after copy
+  //   };
 
-    // Listen for clicks anywhere on the page
-    document.addEventListener('click', handleClick, true);
+  //   // Listen for clicks anywhere on the page
+  //   document.addEventListener('click', handleClick, true);
 
-    return () => {
-      document.removeEventListener('click', handleClick, true);
-      clearTimeout(clickTimeout);
-    };
-  }, [autoClipboardEnabled, lastClipboardContent, processClipboardContent]);
+  //   return () => {
+  //     document.removeEventListener('click', handleClick, true);
+  //     clearTimeout(clickTimeout);
+  //   };
+  // }, [autoClipboardEnabled, lastClipboardContent, processClipboardContent]);
 
   // Listen for paste events (Command+V) - when user pastes, we know they just copied
-  useEffect(() => {
-    if (!autoClipboardEnabled) return;
+  // COMMENTED OUT: Clipboard monitoring feature disabled
+  // useEffect(() => {
+  //   if (!autoClipboardEnabled) return;
 
-    const handlePaste = async (event) => {
-      // Don't prevent default - let paste happen normally
-      // But also process the clipboard content
-      try {
-        // Small delay to ensure clipboard is updated
-        setTimeout(async () => {
-          try {
-            const clipboardText = await navigator.clipboard.readText();
-            if (
-              clipboardText &&
-              clipboardText.trim() !== '' &&
-              clipboardText !== lastClipboardContent
-            ) {
-              setLastClipboardContent(clipboardText);
-              await processClipboardContent(clipboardText);
-            }
-          } catch (err) {
-            // Ignore clipboard errors
-          }
-        }, 100);
-      } catch (err) {
-        // Ignore errors
-      }
-    };
+  //   const handlePaste = async (event) => {
+  //     // Don't prevent default - let paste happen normally
+  //     // But also process the clipboard content
+  //     try {
+  //       // Small delay to ensure clipboard is updated
+  //       setTimeout(async () => {
+  //         try {
+  //           const clipboardText = await navigator.clipboard.readText();
+  //           if (
+  //             clipboardText &&
+  //             clipboardText.trim() !== '' &&
+  //             clipboardText !== lastClipboardContent
+  //           ) {
+  //             setLastClipboardContent(clipboardText);
+  //             await processClipboardContent(clipboardText);
+  //           }
+  //         } catch (err) {
+  //           // Ignore clipboard errors
+  //         }
+  //       }, 100);
+  //     } catch (err) {
+  //       // Ignore errors
+  //     }
+  //   };
 
-    // Listen for paste events on the document
-    document.addEventListener('paste', handlePaste);
+  //   // Listen for paste events on the document
+  //   document.addEventListener('paste', handlePaste);
 
-    return () => {
-      document.removeEventListener('paste', handlePaste);
-    };
-  }, [autoClipboardEnabled, lastClipboardContent, processClipboardContent]);
+  //   return () => {
+  //     document.removeEventListener('paste', handlePaste);
+  //   };
+  // }, [autoClipboardEnabled, lastClipboardContent, processClipboardContent]);
 
   // Listen for keyboard shortcut to manually process clipboard
   // Command+Shift+V (Mac) or Ctrl+Shift+V (Windows) - processes clipboard without pasting
-  useEffect(() => {
-    const handleKeyDown = async (event) => {
-      // Check for Command+Shift+V (Mac) or Ctrl+Shift+V (Windows/Linux)
-      const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
-      const modifierKey = isMac ? event.metaKey : event.ctrlKey;
+  // COMMENTED OUT: Clipboard monitoring feature disabled
+  // useEffect(() => {
+  //   const handleKeyDown = async (event) => {
+  //     // Check for Command+Shift+V (Mac) or Ctrl+Shift+V (Windows/Linux)
+  //     const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+  //     const modifierKey = isMac ? event.metaKey : event.ctrlKey;
 
-      if (modifierKey && event.shiftKey && event.key === 'v') {
-        event.preventDefault();
-        await processClipboard();
-      }
-    };
+  //     if (modifierKey && event.shiftKey && event.key === 'v') {
+  //       event.preventDefault();
+  //       await processClipboard();
+  //     }
+  //   };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [processClipboard]);
+  //   window.addEventListener('keydown', handleKeyDown);
+  //   return () => window.removeEventListener('keydown', handleKeyDown);
+  // }, [processClipboard]);
 
   const handleUploadSuccess = () => {
     // Data will be updated via WebSocket automatically
