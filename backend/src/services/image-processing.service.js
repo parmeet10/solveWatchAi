@@ -4,8 +4,11 @@ import emailService from './email.service.js';
 import dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
+import logger from '../utils/logger.js';
 
 dotenv.config();
+
+const log = logger('ImageProcessingService');
 
 const EMAIL_CONFIG_FILE_PATH = path.join(
   process.cwd(),
@@ -112,7 +115,7 @@ class ImageProcessingService {
           );
         }
       } catch (emailErr) {
-        console.error('Error sending email (non-fatal):', emailErr);
+        log.error('Error sending email (non-fatal)', emailErr);
         // Don't throw - email failure shouldn't break the main flow
       }
 
@@ -123,7 +126,7 @@ class ImageProcessingService {
         usedContext: actuallyUsedContext,
       };
     } catch (err) {
-      console.error('Error processing image:', err);
+      log.error('Error processing image', err);
 
       const errorItem = {
         filename: filename,

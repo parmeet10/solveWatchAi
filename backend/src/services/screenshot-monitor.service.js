@@ -2,6 +2,9 @@ import fs from 'fs';
 import path from 'path';
 import imageProcessingService from './image-processing.service.js';
 import { CONFIG } from '../config/constants.js';
+import logger from '../utils/logger.js';
+
+const log = logger('ScreenshotMonitor');
 
 class ScreenshotMonitorService {
   constructor() {
@@ -27,17 +30,19 @@ class ScreenshotMonitorService {
         });
 
         if (clearedCount > 0) {
-          console.log(
-            `🧹 Cleared ${clearedCount} screenshot(s) from directory on startup.`,
+          log.info(
+            `Cleared ${clearedCount} screenshot(s) from directory on startup`,
           );
         }
       } else {
-        console.log(`📁 Screenshots directory does not exist: ${CONFIG.SCREENSHOTS_PATH}`);
+        log.info(
+          `Screenshots directory does not exist: ${CONFIG.SCREENSHOTS_PATH}`,
+        );
         fs.mkdirSync(CONFIG.SCREENSHOTS_PATH, { recursive: true });
-        console.log(`📁 Created screenshots directory: ${CONFIG.SCREENSHOTS_PATH}`);
+        log.info(`Created screenshots directory: ${CONFIG.SCREENSHOTS_PATH}`);
       }
     } catch (err) {
-      console.error('Error clearing screenshots directory:', err);
+      log.error('Error clearing screenshots directory', err);
     }
   }
 
@@ -49,19 +54,20 @@ class ScreenshotMonitorService {
         if (!this.blacklistedShots.includes(shot)) {
           this.blacklistedShots.push(shot);
           try {
-            const useContextEnabled = imageProcessingService.getUseContextEnabled();
+            const useContextEnabled =
+              imageProcessingService.getUseContextEnabled();
             await imageProcessingService.processImage(
               `${CONFIG.SCREENSHOTS_PATH}/${shot}`,
               shot,
-              useContextEnabled
+              useContextEnabled,
             );
           } catch (err) {
-            console.log('Error processing screenshot:', err);
+            log.error('Error processing screenshot', err);
           }
         }
       }
     } catch (err) {
-      console.log('Error detecting screenshots:', err);
+      log.error('Error detecting screenshots', err);
     }
 
     setTimeout(() => this.detectNewScreenshots(), 1000);
@@ -74,4 +80,3 @@ class ScreenshotMonitorService {
 }
 
 export default new ScreenshotMonitorService();
-

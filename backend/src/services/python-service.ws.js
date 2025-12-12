@@ -4,6 +4,9 @@
 import WebSocket from 'ws';
 import { CONFIG } from '../config/constants.js';
 import transcriptionStorageService from './transcription-storage.service.js';
+import logger from '../utils/logger.js';
+
+const log = logger('PythonServiceWS');
 
 class PythonServiceWebSocketClient {
   constructor() {
@@ -39,7 +42,7 @@ class PythonServiceWebSocketClient {
         }, 10000); // 10 second timeout
 
         ws.on('open', async () => {
-          console.log(`[Python WS] WebSocket opened for session: ${sessionId}`);
+          log.info(`WebSocket opened for session: ${sessionId}`);
 
           // Send connection message
           ws.send(
@@ -55,9 +58,7 @@ class PythonServiceWebSocketClient {
             const message = JSON.parse(data.toString());
 
             if (message.type === 'connected') {
-              console.log(
-                `[Python WS] Session confirmed: ${message.sessionId}`,
-              );
+              log.info(`Session confirmed: ${message.sessionId}`);
               connectionConfirmed = true;
               clearTimeout(connectionTimeout);
 
@@ -80,38 +81,34 @@ class PythonServiceWebSocketClient {
                 message.final || false,
               );
 
-              // Log for debugging (optional, can be removed later)
-              const timestamp = new Date().toISOString();
-              console.log(
-                `[${timestamp}] [TRANSCRIPTION] Session: ${
-                  message.sessionId
-                } - Stored: "${message.text.substring(0, 50)}${
-                  message.text.length > 50 ? '...' : ''
-                }"`,
-              );
+              // Log transcription (debug level to reduce noise)
+              log.debug(`Transcription received`, {
+                sessionId: message.sessionId,
+                textLength: message.text.length,
+                final: message.final,
+              });
 
               // Call callback
               if (onTranscription) {
                 onTranscription(message);
               }
             } else if (message.type === 'error') {
-              console.error(
-                `[Python WS] Error for session ${sessionId}:`,
-                message.message,
-              );
+              log.error(`Error for session ${sessionId}`, {
+                error: message.message,
+              });
               if (onError) {
                 onError(new Error(message.message));
               }
             } else if (message.type === 'stream_ended') {
-              console.log(`[Python WS] Stream ended for session: ${sessionId}`);
+              log.info(`Stream ended for session: ${sessionId}`);
               // Mark that stream ended normally
               const connection = this.connections.get(sessionId);
               if (connection) {
                 connection.streamEnded = true;
               }
             } else if (message.type === 'buffer_flushed') {
-              console.log(
-                `[Python WS] Buffer flushed confirmation for session: ${sessionId}`,
+              log.debug(
+                `Buffer flushed confirmation for session: ${sessionId}`,
               );
               // Resolve flush promise if it exists
               const connection = this.connections.get(sessionId);
@@ -122,15 +119,12 @@ class PythonServiceWebSocketClient {
               }
             }
           } catch (error) {
-            console.error('[Python WS] Error parsing message:', error);
+            log.error('Error parsing message', error);
           }
         });
 
         ws.on('error', (error) => {
-          console.error(
-            `[Python WS] WebSocket error for session ${sessionId}:`,
-            error.message,
-          );
+          log.error(`WebSocket error for session ${sessionId}`, error);
           clearTimeout(connectionTimeout);
           this.connections.delete(sessionId);
           if (onError) {
@@ -142,11 +136,10 @@ class PythonServiceWebSocketClient {
         });
 
         ws.on('close', (code, reason) => {
-          console.log(
-            `[Python WS] Connection closed for session: ${sessionId} (code: ${code}, reason: ${
-              reason || 'none'
-            })`,
-          );
+          log.info(`Connection closed for session: ${sessionId}`, {
+            code,
+            reason: reason || 'none',
+          });
           clearTimeout(connectionTimeout);
           const connection = this.connections.get(sessionId);
           const streamEndedNormally = connection?.streamEnded || false;
@@ -184,20 +177,20 @@ class PythonServiceWebSocketClient {
       !connection.ready ||
       connection.ws.readyState !== WebSocket.OPEN
     ) {
-      console.warn(
-        `[Python WS] Cannot send audio chunk - connection not ready for session: ${sessionId}`,
+      log.warn(
+        `Cannot send audio chunk - connection not ready for session: ${sessionId}`,
       );
       return;
     }
 
     const base64Chunk = audioChunk.toString('base64');
 
-    // Log occasionally to verify chunks are being sent to Python
+    // Log occasionally to verify chunks are being sent to Python (debug level)
     if (Math.random() < 0.1) {
-      // Log ~10% of chunks
-      console.log(
-        `[Python WS] Sending audio chunk to Python for session ${sessionId}, size: ${audioChunk.length} bytes`,
-      );
+      log.debug(`Sending audio chunk to Python`, {
+        sessionId,
+        size: `${audioChunk.length} bytes`,
+      });
     }
 
     const chunkTimestamp = Date.now();
@@ -264,9 +257,9 @@ class PythonServiceWebSocketClient {
       }
     }
 
-    console.log(
-      `[Python WS] Flushing buffer for session ${sessionId} with cutoff timestamp: ${cutoffTimestamp}`,
-    );
+    log.debug(`Flushing buffer for session ${sessionId}`, {
+      cutoffTimestamp,
+    });
 
     // Create promise for flush completion
     const flushPromise = new Promise((resolve, reject) => {
@@ -276,9 +269,7 @@ class PythonServiceWebSocketClient {
       // Set timeout (3 seconds)
       setTimeout(() => {
         if (connection.flushResolve === resolve) {
-          console.warn(
-            `[Python WS] Flush timeout for session ${sessionId}, resolving anyway`,
-          );
+          log.warn(`Flush timeout for session ${sessionId}, resolving anyway`);
           connection.flushPromise = null;
           connection.flushResolve = null;
           resolve();

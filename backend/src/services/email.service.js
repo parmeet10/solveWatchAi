@@ -1,7 +1,10 @@
 import nodemailer from 'nodemailer';
 import dotenv from 'dotenv';
+import logger from '../utils/logger.js';
 
 dotenv.config();
+
+const log = logger('EmailService');
 
 class EmailService {
   async sendMail(from, to, subject, text) {
@@ -22,14 +25,13 @@ class EmailService {
 
     try {
       const info = await transporter.sendMail(mailOptions);
-      console.log(`✅ Email sent`);
+      log.info('Email sent successfully', { to, subject });
       return info;
     } catch (err) {
-      console.error('Error sending email:', err);
+      log.error('Error sending email', err);
       throw err;
     }
   }
 }
 
 export default new EmailService();
-

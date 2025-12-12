@@ -4,6 +4,9 @@
 import { Server } from 'socket.io';
 import pythonServiceWS from '../services/python-service.ws.js';
 import { randomUUID } from 'crypto';
+import logger from '../utils/logger.js';
+
+const log = logger('StreamHandler');
 
 class StreamHandler {
   constructor(io) {
@@ -16,16 +19,14 @@ class StreamHandler {
 
     namespace.on('connection', (socket) => {
       const sessionId = randomUUID();
-      console.log(
-        `[Socket.io] Client connected: ${socket.id}, Session: ${sessionId}`,
-      );
+      log.info(`Client connected`, { socketId: socket.id, sessionId });
 
       let pythonWS = null;
 
       // Handle connection to Python service
       socket.on('start_stream', async () => {
         try {
-          console.log(`[Socket.io] Starting stream for session: ${sessionId}`);
+          log.info(`Starting stream for session: ${sessionId}`);
 
           pythonWS = await pythonServiceWS.connect(
             sessionId,
@@ -39,10 +40,7 @@ class StreamHandler {
               });
             },
             (error) => {
-              console.error(
-                `[Socket.io] Python WS error for session ${sessionId}:`,
-                error,
-              );
+              log.error(`Python WS error for session ${sessionId}`, error);
               socket.emit('error', {
                 message: error.message || 'Transcription error',
               });
@@ -51,7 +49,7 @@ class StreamHandler {
 
           socket.emit('stream_started', { sessionId });
         } catch (error) {
-          console.error(`[Socket.io] Error starting stream:`, error);
+          log.error('Error starting stream', error);
           socket.emit('error', {
             message: error.message || 'Failed to start stream',
           });
@@ -69,14 +67,15 @@ class StreamHandler {
           // Decode base64 audio chunk
           const audioBuffer = Buffer.from(data.chunk, 'base64');
 
-          console.log(
-            `[Socket.io] Received audio chunk for session ${sessionId}, size: ${audioBuffer.length} bytes`,
-          );
+          log.debug(`Received audio chunk`, {
+            sessionId,
+            size: `${audioBuffer.length} bytes`,
+          });
 
           // Forward to Python service
           pythonServiceWS.sendAudioChunk(sessionId, audioBuffer);
         } catch (error) {
-          console.error(`[Socket.io] Error processing audio chunk:`, error);
+          log.error('Error processing audio chunk', error);
           socket.emit('error', {
             message: error.message || 'Failed to process audio chunk',
           });
@@ -89,9 +88,10 @@ class StreamHandler {
           const cutoffTimestamp = data?.cutoffTimestamp || null;
           const gracePeriodMs = data?.gracePeriodMs || 500;
 
-          console.log(
-            `[Socket.io] Flush buffer requested for session: ${sessionId}, cutoff: ${cutoffTimestamp}`,
-          );
+          log.debug(`Flush buffer requested`, {
+            sessionId,
+            cutoffTimestamp,
+          });
 
           if (!pythonWS) {
             socket.emit('error', { message: 'Stream not started' });
@@ -106,9 +106,9 @@ class StreamHandler {
           );
 
           socket.emit('buffer_flushed', { sessionId });
-          console.log(`[Socket.io] Buffer flushed for session: ${sessionId}`);
+          log.debug(`Buffer flushed for session: ${sessionId}`);
         } catch (error) {
-          console.error(`[Socket.io] Error flushing buffer:`, error);
+          log.error('Error flushing buffer', error);
           socket.emit('error', {
             message: error.message || 'Failed to flush buffer',
           });
@@ -117,7 +117,7 @@ class StreamHandler {
 
       // Handle stream end
       socket.on('end_stream', () => {
-        console.log(`[Socket.io] Ending stream for session: ${sessionId}`);
+        log.info(`Ending stream for session: ${sessionId}`);
         if (pythonWS) {
           pythonServiceWS.endStream(sessionId);
           // Wait a bit for Python to send stream_ended and close gracefully
@@ -132,9 +132,11 @@ class StreamHandler {
 
       // Handle disconnect
       socket.on('disconnect', (reason) => {
-        console.log(
-          `[Socket.io] Client disconnected: ${socket.id}, Session: ${sessionId}, Reason: ${reason}`,
-        );
+        log.info(`Client disconnected`, {
+          socketId: socket.id,
+          sessionId,
+          reason,
+        });
         if (pythonWS) {
           pythonServiceWS.disconnect(sessionId);
           pythonWS = null;
@@ -143,7 +145,7 @@ class StreamHandler {
 
       // Handle errors
       socket.on('error', (error) => {
-        console.error(`[Socket.io] Error for session ${sessionId}:`, error);
+        log.error(`Error for session ${sessionId}`, error);
         socket.emit('error', {
           message: error.message || 'An error occurred',
         });

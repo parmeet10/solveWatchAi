@@ -11,4 +11,10 @@ aiofiles>=24.1.0
 ffmpeg-python>=0.2.0
 silero-vad>=4.0.0
 torch>=2.0.0
+opentelemetry-api>=1.28.0
+opentelemetry-sdk>=1.28.0
+opentelemetry-exporter-otlp-proto-http>=1.28.0
+opentelemetry-instrumentation-fastapi>=0.49b0
+opentelemetry-instrumentation-httpx>=0.49b0
+psutil>=5.9.0
 

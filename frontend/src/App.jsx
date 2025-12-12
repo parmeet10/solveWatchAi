@@ -45,7 +45,7 @@ function App() {
         }
       }
     } catch (err) {
-      console.error('Error checking API keys config:', err);
+      // Silently handle config check errors
       setApiKeysConfigured(false);
     }
   }, []);
@@ -58,7 +58,7 @@ function App() {
         setProcessedData(data || []);
       }
     } catch (err) {
-      console.error('Error fetching data:', err);
+      // Silently handle fetch errors - WebSocket will provide updates
     } finally {
       setLoading(false);
     }
@@ -80,7 +80,7 @@ function App() {
         setEmailConfigured(false);
       }
     } catch (err) {
-      console.error('Error checking email config:', err);
+      // Silently handle config check errors
       setEmailConfigured(false);
     }
   }, []);
@@ -100,18 +100,13 @@ function App() {
           return;
         }
 
-        console.log(
-          '📋 Processing clipboard content:',
-          clipboardText.substring(0, 50) + '...',
-        );
-
         // Send to backend
         await apiService.processClipboard(clipboardText);
 
         // Data will be updated via WebSocket, no need to poll
         setProcessingClipboard(false);
       } catch (err) {
-        console.error('Error processing clipboard:', err);
+        // Silently handle processing errors
         setProcessingClipboard(false);
       }
     },
@@ -124,7 +119,6 @@ function App() {
       const clipboardText = await navigator.clipboard.readText();
       await processClipboardContent(clipboardText);
     } catch (err) {
-      console.error('Error reading clipboard:', err);
       alert(
         'Failed to access clipboard. Please grant clipboard permissions or use the manual option.',
       );
@@ -142,7 +136,6 @@ function App() {
 
     // Setup WebSocket connection for real-time updates
     const socketUrl = window.location.origin;
-    console.log('[DataWebSocket] Connecting to:', `${socketUrl}/data-updates`);
 
     socketRef.current = io(`${socketUrl}/data-updates`, {
       path: '/socket.io',
@@ -155,21 +148,8 @@ function App() {
 
     const socket = socketRef.current;
 
-    socket.on('connect', () => {
-      console.log('[DataWebSocket] Connected');
-    });
-
-    socket.on('disconnect', () => {
-      console.log('[DataWebSocket] Disconnected');
-    });
-
-    socket.on('connect_error', (error) => {
-      console.error('[DataWebSocket] Connection error:', error);
-    });
-
     // Listen for data updates
     socket.on('data_update', (payload) => {
-      console.log('[DataWebSocket] Data update received:', payload.type);
       if (payload.type === 'initial' || payload.type === 'update') {
         setProcessedData(payload.data || []);
         setLoading(false);
@@ -210,7 +190,6 @@ function App() {
         }
       } catch (err) {
         // Clipboard access might be denied, ignore silently
-        console.log('Clipboard access requires user interaction');
       }
     };
 

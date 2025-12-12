@@ -13,8 +13,11 @@ import {
   notFoundHandler,
 } from './middleware/error.middleware.js';
 import { CONFIG } from './config/constants.js';
+import logger from './utils/logger.js';
 
 dotenv.config();
+
+const log = logger('App');
 
 const app = express();
 
@@ -35,8 +38,8 @@ const frontendDistPath = path.join(process.cwd(), 'frontend', 'dist');
 if (fs.existsSync(frontendDistPath)) {
   app.use(express.static(frontendDistPath));
 } else {
-  console.warn(
-    '⚠️  Frontend dist folder not found. Run "npm run build" to build the React app.',
+  log.warn(
+    'Frontend dist folder not found. Run "npm run build" to build the React app.',
   );
 }
 
