@@ -1,6 +1,9 @@
 import clipboardy from 'clipboardy';
 import aiService from './ai.service.js';
 import imageProcessingService from './image-processing.service.js';
+import logger from '../utils/logger.js';
+
+const log = logger('ClipboardMonitor');
 
 class ClipboardMonitorService {
   constructor(options = {}) {
@@ -12,31 +15,31 @@ class ClipboardMonitorService {
   }
 
   defaultHandler(content) {
-    const timestamp = new Date().toLocaleTimeString();
-    console.log('\n📋 Clipboard changed:');
-    console.log('─'.repeat(50));
-    console.log(content);
-    console.log('─'.repeat(50));
-    console.log(`[${timestamp}] Length: ${content.length} characters\n`);
+    log.debug('Clipboard changed', { length: content.length });
   }
 
   async processClipboardContent(content) {
     try {
       // Check if context mode is enabled
       const useContextEnabled = imageProcessingService.getUseContextEnabled();
-      
+
       if (useContextEnabled) {
         const lastResponse = imageProcessingService.getLastResponse();
         if (lastResponse) {
-          console.log('🤖 Processing clipboard content with AI (Context Mode: ENABLED)...');
-          console.log('📚 Using previous response as context');
+          log.info(
+            'Processing clipboard content with AI (Context Mode: ENABLED)',
+          );
         } else {
-          console.log('🤖 Processing clipboard content with AI (Context Mode: ENABLED, but no previous context)...');
+          log.info(
+            'Processing clipboard content with AI (Context Mode: ENABLED, but no previous context)',
+          );
         }
       } else {
-        console.log('🤖 Processing clipboard content with AI (Context Mode: DISABLED)...');
+        log.info(
+          'Processing clipboard content with AI (Context Mode: DISABLED)',
+        );
       }
-      
+
       let aiResponse;
 
       if (useContextEnabled) {
@@ -62,47 +65,48 @@ class ClipboardMonitorService {
         gptResponse:
           responseText.substring(0, 1000) +
           (responseText.length > 1000 ? '...' : ''),
-        usedContext: useContextEnabled && imageProcessingService.getLastResponse() !== null,
+        usedContext:
+          useContextEnabled &&
+          imageProcessingService.getLastResponse() !== null,
       };
 
       // Add to processed data
       imageProcessingService.addProcessedData(processedEntry);
 
-      console.log('✅ Clipboard content processed successfully');
-      console.log('📝 AI Response preview:', responseText.substring(0, 200) + '...\n');
-      
+      log.info('Clipboard content processed successfully', {
+        responseLength: responseText.length,
+      });
+
       return processedEntry;
     } catch (err) {
-      console.error('❌ Error processing clipboard content:', err.message);
+      log.error('Error processing clipboard content', err);
       throw err;
     }
   }
 
   async start() {
     if (this.isRunning) {
-      console.log('⚠️  Clipboard monitor is already running!');
+      log.warn('Clipboard monitor is already running');
       return;
     }
 
     this.isRunning = true;
-    console.log('\n🚀 Clipboard monitor started!');
-    console.log('👀 Watching for clipboard changes...');
-    console.log(`⏱️  Check interval: ${this.interval}ms`);
-    console.log(`🤖 Auto-process: ${this.autoProcess ? 'ENABLED' : 'DISABLED'}`);
+    log.info('Clipboard monitor started', {
+      interval: `${this.interval}ms`,
+      autoProcess: this.autoProcess,
+    });
 
     // Get initial clipboard content and set as baseline (ignore existing content)
     try {
       this.lastContent = await clipboardy.read();
       if (this.lastContent.trim() !== '') {
-        console.log('📋 Existing clipboard content detected (will be ignored - only new changes will be processed)');
-        console.log('');
-      } else {
-        console.log('📋 Clipboard is empty - ready to monitor for new content\n');
+        log.debug('Existing clipboard content detected (will be ignored)');
       }
     } catch (error) {
       this.lastContent = '';
-      console.log('⚠️  Could not read initial clipboard content:', error.message);
-      console.log('📋 Will monitor for new clipboard changes\n');
+      log.warn('Could not read initial clipboard content', {
+        error: error.message,
+      });
     }
 
     // Start monitoring
@@ -111,9 +115,12 @@ class ClipboardMonitorService {
         const currentContent = await clipboardy.read();
 
         // Check if clipboard content has changed
-        if (currentContent !== this.lastContent && currentContent.trim() !== '') {
+        if (
+          currentContent !== this.lastContent &&
+          currentContent.trim() !== ''
+        ) {
           this.lastContent = currentContent;
-          
+
           // Log the clipboard change
           this.onChange(currentContent);
 
@@ -122,15 +129,18 @@ class ClipboardMonitorService {
             try {
               await this.processClipboardContent(currentContent);
             } catch (error) {
-              console.error('❌ Error auto-processing clipboard:', error.message);
+              log.error('Error auto-processing clipboard', error);
             }
           }
         }
       } catch (error) {
         // Silently handle clipboard read errors (might be permission issues)
         // Only log if it's a different error than permission denied
-        if (!error.message.includes('permission') && !error.message.includes('denied')) {
-          console.error('⚠️  Error reading clipboard:', error.message);
+        if (
+          !error.message.includes('permission') &&
+          !error.message.includes('denied')
+        ) {
+          log.warn('Error reading clipboard', { error: error.message });
         }
       }
     }, this.interval);
@@ -138,18 +148,18 @@ class ClipboardMonitorService {
 
   stop() {
     if (!this.isRunning) {
-      console.log('⚠️  Clipboard monitor is not running!');
+      log.warn('Clipboard monitor is not running');
       return;
     }
 
     clearInterval(this.intervalId);
     this.isRunning = false;
-    console.log('\n👋 Clipboard monitor stopped!');
+    log.info('Clipboard monitor stopped');
   }
 
   setAutoProcess(enabled) {
     this.autoProcess = enabled;
-    console.log(`🔄 Auto-process ${enabled ? 'ENABLED' : 'DISABLED'}`);
+    log.info(`Auto-process ${enabled ? 'ENABLED' : 'DISABLED'}`);
   }
 }
 
@@ -157,4 +167,3 @@ export default new ClipboardMonitorService({
   interval: 300, // Check every 300ms
   autoProcess: true, // Auto-process clipboard content
 });
-

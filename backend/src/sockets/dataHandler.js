@@ -4,6 +4,9 @@
  */
 import { EventEmitter } from 'events';
 import imageProcessingService from '../services/image-processing.service.js';
+import logger from '../utils/logger.js';
+
+const log = logger('DataHandler');
 
 class DataHandler extends EventEmitter {
   constructor(io) {
@@ -17,7 +20,7 @@ class DataHandler extends EventEmitter {
     const namespace = this.io.of('/data-updates');
 
     namespace.on('connection', (socket) => {
-      console.log(`[DataHandler] Client connected: ${socket.id}`);
+      log.info(`Client connected`, { socketId: socket.id });
 
       // Send initial data on connection
       socket.emit('data_update', {
@@ -27,14 +30,12 @@ class DataHandler extends EventEmitter {
 
       // Handle disconnect
       socket.on('disconnect', (reason) => {
-        console.log(
-          `[DataHandler] Client disconnected: ${socket.id}, Reason: ${reason}`,
-        );
+        log.info(`Client disconnected`, { socketId: socket.id, reason });
       });
 
       // Handle errors
       socket.on('error', (error) => {
-        console.error(`[DataHandler] Error for client ${socket.id}:`, error);
+        log.error(`Error for client ${socket.id}`, error);
       });
     });
   }
@@ -49,7 +50,7 @@ class DataHandler extends EventEmitter {
         data: imageProcessingService.getProcessedData(),
         newItem: data,
       });
-      console.log('[DataHandler] Broadcasted data update to all clients');
+      log.debug('Broadcasted data update to all clients');
     });
   }
 

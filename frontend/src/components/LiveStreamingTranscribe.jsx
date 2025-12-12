@@ -69,7 +69,6 @@ function LiveStreamingTranscribe() {
   }, []);
 
   const handleError = React.useCallback((error) => {
-    console.error('WebSocket error:', error);
     setStatus('error');
     // Don't show alert for reconnection attempts, only for critical errors
     if (!error.message.includes('reconnect')) {
@@ -151,23 +150,15 @@ function LiveStreamingTranscribe() {
       // Subtract small buffer to account for network latency
       const cutoffTimestamp = Date.now() - 100; // 100ms buffer for network latency
 
-      console.log(
-        `[Frontend] Flushing buffer before processing, cutoff timestamp: ${cutoffTimestamp}`,
-      );
-
       // Flush buffer to ensure all audio up to this point is processed
       try {
         if (flushBuffer && streaming) {
           await flushBuffer(cutoffTimestamp, 500);
-          console.log('[Frontend] Buffer flushed successfully');
 
           // Small delay to ensure all transcriptions are stored
           await new Promise((resolve) => setTimeout(resolve, 200));
         }
       } catch (flushError) {
-        console.warn(
-          `[Frontend] Error flushing buffer (non-fatal): ${flushError.message}`,
-        );
         // Continue anyway - might still have transcriptions
       }
 
@@ -187,7 +178,6 @@ function LiveStreamingTranscribe() {
 
         // Clear transcriptions so next "pp" only processes new audio
         setTranscriptions([]);
-        console.log('[Frontend] Cleared transcriptions after processing');
 
         // Refresh data in parent component (App.jsx)
         // This will be handled by the App component's periodic refresh
@@ -195,7 +185,6 @@ function LiveStreamingTranscribe() {
         throw new Error(result.error || 'Failed to process transcription');
       }
     } catch (error) {
-      console.error('Error processing transcription:', error);
       alert(`Failed to process transcription: ${error.message}`);
       setStatus('error');
     } finally {
@@ -211,12 +200,10 @@ function LiveStreamingTranscribe() {
   // Update streaming ref when streaming state changes
   useEffect(() => {
     streamingRef.current = streaming;
-    console.log('[Frontend] Streaming state changed:', streaming);
   }, [streaming]);
 
   const startRecording = async () => {
     try {
-      console.log('[Frontend] Starting recording...');
 
       // Check if getUserMedia is available
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -254,11 +241,9 @@ function LiveStreamingTranscribe() {
         },
       });
 
-      console.log('[Frontend] Microphone access granted');
       streamRef.current = stream;
 
       // Start WebSocket stream first
-      console.log('[Frontend] Starting WebSocket stream...');
       startStream();
 
       // Wait for stream to actually start
@@ -272,9 +257,6 @@ function LiveStreamingTranscribe() {
         throw new Error('Stream did not start in time');
       }
 
-      console.log(
-        '[Frontend] WebSocket stream started, setting up audio processor...',
-      );
 
       // Use Web Audio API to capture raw PCM audio
       const audioContext = new (window.AudioContext ||
@@ -285,42 +267,22 @@ function LiveStreamingTranscribe() {
       // Resume audio context if suspended (required after user interaction)
       if (audioContext.state === 'suspended') {
         await audioContext.resume();
-        console.log('[Frontend] Audio context resumed');
       }
-
-      console.log(
-        `[Frontend] Audio context state: ${audioContext.sampleRate}Hz, state: ${audioContext.state}`,
-      );
 
       const source = audioContext.createMediaStreamSource(stream);
       const processor = audioContext.createScriptProcessor(4096, 1, 1);
-
-      console.log(
-        '[Frontend] Audio processor created, buffer size: 4096 samples',
       );
 
       let chunkCount = 0;
       let skippedCount = 0;
       processor.onaudioprocess = (event) => {
-        // Log every 50 chunks to verify processor is working
         chunkCount++;
-        if (chunkCount % 50 === 0) {
-          console.log(
-            `[Frontend] Audio processor fired #${chunkCount}, recording: ${recordingRef.current}, streaming: ${streamingRef.current}`,
-          );
-        }
 
         if (!recordingRef.current) {
-          if (chunkCount % 50 === 0) {
-            console.log('[Frontend] Skipping chunk - not recording');
-          }
           return;
         }
 
         if (!streamingRef.current) {
-          if (chunkCount % 50 === 0) {
-            console.log('[Frontend] Skipping chunk - not streaming');
-          }
           return;
         }
 
@@ -342,13 +304,6 @@ function LiveStreamingTranscribe() {
 
         if (!hasAudio) {
           skippedCount++;
-          if (skippedCount % 100 === 0) {
-            console.log(
-              `[Frontend] Skipped ${skippedCount} silent chunks (max amplitude: ${maxAmplitude.toFixed(
-                4,
-              )})`,
-            );
-          }
           return; // Skip silent chunks
         }
 
@@ -357,15 +312,6 @@ function LiveStreamingTranscribe() {
         for (let i = 0; i < inputData.length; i++) {
           const s = Math.max(-1, Math.min(1, inputData[i]));
           pcmData[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
-        }
-
-        const chunksSent = chunkCount - skippedCount;
-        if (chunksSent % 10 === 0 || chunksSent <= 5) {
-          console.log(
-            `[Frontend] Sending audio chunk #${chunksSent} (total processed: ${chunkCount}), size: ${
-              pcmData.buffer.byteLength
-            } bytes, amplitude: ${maxAmplitude.toFixed(4)}`,
-          );
         }
 
         // Send PCM chunk
@@ -401,7 +347,6 @@ function LiveStreamingTranscribe() {
 
   const stopRecording = () => {
     try {
-      console.log('[Frontend] Stop recording called');
 
       // Disconnect audio processor
       if (mediaRecorderRef.current) {
@@ -442,7 +387,6 @@ function LiveStreamingTranscribe() {
       setStatus('stopped');
       // Keep transcriptions visible after stopping
     } catch (error) {
-      console.error('[Frontend] Error stopping recording:', error);
       setStatus('error');
     }
   };
@@ -450,11 +394,8 @@ function LiveStreamingTranscribe() {
   useEffect(() => {
     return () => {
       // Cleanup on unmount only
-      console.log('[Frontend] Component unmounting, cleaning up...');
-
       // Only end stream if we're actually streaming
       if (streamingRef.current || recordingRef.current) {
-        console.log('[Frontend] Ending stream on unmount');
         endStreamRef.current();
       }
 

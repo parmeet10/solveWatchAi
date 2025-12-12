@@ -10,6 +10,9 @@ import streamHandler from './sockets/streamHandler.js';
 import DataHandler from './sockets/dataHandler.js';
 import imageProcessingService from './services/image-processing.service.js';
 import { CONFIG, getLocalIP } from './config/constants.js';
+import logger from './utils/logger.js';
+
+const log = logger('Server');
 
 // Start screenshot monitoring
 screenshotMonitorService.start();
@@ -36,11 +39,11 @@ if (fs.existsSync(certPath) && fs.existsSync(keyPath)) {
     // Add error handlers for HTTPS
     httpsServer.on('error', (error) => {
       if (error.code === 'EADDRINUSE') {
-        console.error(
-          `\n❌ Port ${CONFIG.HTTPS_PORT} is already in use. Please stop the other process or change HTTPS_PORT in .env\n`,
+        log.error(
+          `Port ${CONFIG.HTTPS_PORT} is already in use. Please stop the other process or change HTTPS_PORT in .env`,
         );
       } else {
-        console.error('\n❌ HTTPS server error:', error.message);
+        log.error('HTTPS server error', error);
       }
     });
 
@@ -50,42 +53,22 @@ if (fs.existsSync(certPath) && fs.existsSync(keyPath)) {
         // Client disconnected, ignore
         return;
       }
-      console.error('HTTPS client error:', err.message);
+      log.warn('HTTPS client error', { error: err.message });
       socket.end('HTTP/1.1 400 Bad Request\r\n\r\n');
     });
 
     httpsServer.listen(CONFIG.HTTPS_PORT, '0.0.0.0', () => {
       const localIP = getLocalIP();
-      console.log(`\n✅ HTTPS server is running!`);
-      console.log(
-        `📱 Access from MacBook: https://localhost:${CONFIG.HTTPS_PORT}`,
-      );
-      console.log(
-        `📱 Access from iPhone: https://${localIP}:${CONFIG.HTTPS_PORT}`,
-      );
-      console.log(
-        `\n⚠️  iPhone Access Instructions:\n` +
-          `   1. Open Safari on your iPhone\n` +
-          `   2. Go to: https://${localIP}:${CONFIG.HTTPS_PORT}\n` +
-          `   3. You'll see a security warning - tap "Show Details" or "Advanced"\n` +
-          `   4. Tap "Visit Website" or "Proceed to ${localIP}"\n` +
-          `   5. If page keeps reloading:\n` +
-          `      - Clear Safari cache: Settings → Safari → Clear History\n` +
-          `      - Try HTTP instead: http://${localIP}:${CONFIG.PORT}\n` +
-          `      - Or use Chrome/Firefox on iPhone\n`,
-      );
+      log.info(`HTTPS server is running on port ${CONFIG.HTTPS_PORT}`);
+      log.info(`Access from MacBook: https://localhost:${CONFIG.HTTPS_PORT}`);
+      log.info(`Access from iPhone: https://${localIP}:${CONFIG.HTTPS_PORT}`);
     });
   } catch (error) {
-    console.error('\n❌ Failed to start HTTPS server:', error.message);
-    console.error(
-      '   Make sure cert.pem and key.pem are valid SSL certificates.\n',
-    );
+    log.error('Failed to start HTTPS server', error);
   }
 } else {
-  console.log(
-    `\n⚠️  HTTPS certificates not found (cert.pem, key.pem).\n` +
-      `   HTTPS server will not start. Run './generate-cert.js' to generate certificates.\n` +
-      `   HTTP server will still be available on port ${CONFIG.PORT}.\n`,
+  log.warn(
+    'HTTPS certificates not found (cert.pem, key.pem). HTTPS server will not start. Run "./generate-cert.js" to generate certificates.',
   );
 }
 
@@ -128,37 +111,35 @@ if (ioHttps) {
 }
 
 httpServer.listen(CONFIG.PORT, '0.0.0.0', () => {
-  console.log(`\n✅ HTTP server is running!`);
-  console.log(`📱 Access from MacBook: http://localhost:${CONFIG.PORT}`);
-  console.log(
-    `📱 Access from external device: http://${getLocalIP()}:${CONFIG.PORT}`,
-  );
-  console.log(`\nMake sure both devices are on the same WiFi network.\n`);
+  const localIP = getLocalIP();
+  log.info(`HTTP server is running on port ${CONFIG.PORT}`);
+  log.info(`Access from MacBook: http://localhost:${CONFIG.PORT}`);
+  log.info(`Access from external device: http://${localIP}:${CONFIG.PORT}`);
 });
 
 // Graceful shutdown handlers
 const gracefulShutdown = () => {
-  console.log('\n🛑 Shutting down gracefully...');
+  log.info('Shutting down gracefully...');
   clipboardMonitorService.stop();
   screenshotMonitorService.stop && screenshotMonitorService.stop();
 
   if (httpServer) {
     httpServer.close(() => {
-      console.log('✅ HTTP server closed');
+      log.info('HTTP server closed');
       process.exit(0);
     });
   }
 
   if (httpsServer) {
     httpsServer.close(() => {
-      console.log('✅ HTTPS server closed');
+      log.info('HTTPS server closed');
       process.exit(0);
     });
   }
 
   // Force exit after 5 seconds
   setTimeout(() => {
-    console.log('⚠️  Forcing exit...');
+    log.warn('Forcing exit...');
     process.exit(1);
   }, 5000);
 };

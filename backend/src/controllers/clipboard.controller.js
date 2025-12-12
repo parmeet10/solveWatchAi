@@ -3,8 +3,16 @@ import imageProcessingService from '../services/image-processing.service.js';
 import emailService from '../services/email.service.js';
 import fs from 'fs';
 import path from 'path';
+import logger from '../utils/logger.js';
 
-const EMAIL_CONFIG_FILE_PATH = path.join(process.cwd(), 'backend', 'config', 'email-config.json');
+const log = logger('ClipboardController');
+
+const EMAIL_CONFIG_FILE_PATH = path.join(
+  process.cwd(),
+  'backend',
+  'config',
+  'email-config.json',
+);
 
 class ClipboardController {
   async processClipboard(req, res) {
@@ -14,24 +22,27 @@ class ClipboardController {
       if (!content || typeof content !== 'string') {
         return res
           .status(400)
-          .json({ error: 'Clipboard content is required and must be a string' });
+          .json({
+            error: 'Clipboard content is required and must be a string',
+          });
       }
 
       // Check if context mode is enabled
       const useContextEnabled = imageProcessingService.getUseContextEnabled();
-      
+
       if (useContextEnabled) {
         const lastResponse = imageProcessingService.getLastResponse();
         if (lastResponse) {
-          console.log('📋 Processing clipboard content (Context Mode: ENABLED)...');
-          console.log('📚 Using previous response as context');
+          log.info('Processing clipboard content (Context Mode: ENABLED)');
         } else {
-          console.log('📋 Processing clipboard content (Context Mode: ENABLED, but no previous context)...');
+          log.info(
+            'Processing clipboard content (Context Mode: ENABLED, but no previous context)',
+          );
         }
       } else {
-        console.log('📋 Processing clipboard content (Context Mode: DISABLED)...');
+        log.info('Processing clipboard content (Context Mode: DISABLED)');
       }
-      
+
       let aiResponse;
 
       if (useContextEnabled) {
@@ -57,7 +68,9 @@ class ClipboardController {
         gptResponse:
           responseText.substring(0, 1000) +
           (responseText.length > 1000 ? '...' : ''),
-        usedContext: useContextEnabled && imageProcessingService.getLastResponse() !== null,
+        usedContext:
+          useContextEnabled &&
+          imageProcessingService.getLastResponse() !== null,
       };
 
       // Add to processed data (similar to how screenshots are handled)
@@ -80,18 +93,18 @@ class ClipboardController {
           );
         }
       } catch (emailErr) {
-        console.error('Error sending email (non-fatal):', emailErr);
+        log.error('Error sending email (non-fatal)', emailErr);
         // Don't throw - email failure shouldn't break the main flow
       }
 
-      console.log('✅ Clipboard content processed successfully');
+      log.info('Clipboard content processed successfully');
 
       res.json({
         success: true,
         data: processedEntry,
       });
     } catch (err) {
-      console.error('Error processing clipboard content:', err);
+      log.error('Error processing clipboard content', err);
       res.status(500).json({
         error: 'Failed to process clipboard content',
         details: err.message,
@@ -101,4 +114,3 @@ class ClipboardController {
 }
 
 export default new ClipboardController();
-

@@ -5,6 +5,9 @@ import emailService from '../services/email.service.js';
 import pythonServiceWS from '../services/python-service.ws.js';
 import fs from 'fs';
 import path from 'path';
+import logger from '../utils/logger.js';
+
+const log = logger('TranscriptionController');
 
 const EMAIL_CONFIG_FILE_PATH = path.join(
   process.cwd(),
@@ -30,11 +33,11 @@ class TranscriptionController {
         });
       }
 
-      console.log(`📝 Processing transcription for session: ${sessionId}`);
+      log.info(`Processing transcription for session: ${sessionId}`);
 
       // Flush buffer before retrieving transcriptions to ensure all audio is processed
       try {
-        console.log(`🔄 Flushing buffer for session: ${sessionId}`);
+        log.debug(`Flushing buffer for session: ${sessionId}`);
         await pythonServiceWS.flushBuffer(
           sessionId,
           cutoffTimestamp || null,
@@ -45,11 +48,11 @@ class TranscriptionController {
         // This catches any in-transit packets and ensures backend has received all transcriptions
         await new Promise((resolve) => setTimeout(resolve, 400));
 
-        console.log(`✅ Buffer flushed, retrieving transcriptions`);
+        log.debug('Buffer flushed, retrieving transcriptions');
       } catch (flushError) {
-        console.warn(
-          `⚠️ Error flushing buffer (non-fatal): ${flushError.message}`,
-        );
+        log.warn('Error flushing buffer (non-fatal)', {
+          error: flushError.message,
+        });
         // Continue anyway - might still have transcriptions
       }
 
@@ -59,20 +62,13 @@ class TranscriptionController {
 
       // Debug: Check what sessions exist
       const activeSessions = transcriptionStorageService.getActiveSessions();
-      console.log(
-        `[processTranscription] Active sessions: ${activeSessions.join(', ')}`,
-      );
-      console.log(`[processTranscription] Requested sessionId: ${sessionId}`);
-      console.log(
-        `[processTranscription] Session exists: ${
-          transcriptionStorageService.getSession(sessionId) !== null
-        }`,
-      );
-      console.log(
-        `[processTranscription] Transcription length: ${
-          transcriptionText ? transcriptionText.length : 0
-        }`,
-      );
+      log.debug('Processing transcription', {
+        activeSessions: activeSessions.join(', '),
+        requestedSessionId: sessionId,
+        sessionExists:
+          transcriptionStorageService.getSession(sessionId) !== null,
+        transcriptionLength: transcriptionText ? transcriptionText.length : 0,
+      });
 
       if (!transcriptionText || transcriptionText.trim() === '') {
         return res.status(400).json({
@@ -87,13 +83,9 @@ class TranscriptionController {
         });
       }
 
-      console.log(`📝 Processing transcription for session: ${sessionId}`);
-      console.log(
-        `📄 Transcription text (first 200 chars): ${transcriptionText.substring(
-          0,
-          200,
-        )}...`,
-      );
+      log.info(`Processing transcription for session: ${sessionId}`, {
+        transcriptionLength: transcriptionText.length,
+      });
 
       // Process with AI
       const aiResponse = await aiService.askGptTranscription(transcriptionText);
@@ -136,15 +128,15 @@ class TranscriptionController {
           );
         }
       } catch (emailErr) {
-        console.error('Error sending email (non-fatal):', emailErr);
+        log.error('Error sending email (non-fatal)', emailErr);
         // Don't throw - email failure shouldn't break the main flow
       }
 
-      console.log('✅ Transcription processed successfully');
+      log.info('Transcription processed successfully');
 
       // Clear transcription storage for this session so next "pp" only processes new audio
       transcriptionStorageService.clearSession(sessionId);
-      console.log(`🧹 Cleared transcription storage for session: ${sessionId}`);
+      log.debug(`Cleared transcription storage for session: ${sessionId}`);
 
       res.json({
         success: true,
@@ -153,7 +145,7 @@ class TranscriptionController {
         fullResponse: responseText,
       });
     } catch (err) {
-      console.error('Error processing transcription:', err);
+      log.error('Error processing transcription', err);
       res.status(500).json({
         success: false,
         error: 'Failed to process transcription',
@@ -192,7 +184,7 @@ class TranscriptionController {
         createdAt: session ? session.createdAt : null,
       });
     } catch (err) {
-      console.error('Error getting transcription:', err);
+      log.error('Error getting transcription', err);
       res.status(500).json({
         success: false,
         error: 'Failed to get transcription',
@@ -210,9 +202,9 @@ class TranscriptionController {
     try {
       const activeSessions = transcriptionStorageService.getActiveSessions();
 
-      console.log(
-        `[getLatestSession] Active sessions: ${activeSessions.length}`,
-      );
+      log.debug('Getting latest session', {
+        activeSessionsCount: activeSessions.length,
+      });
       if (activeSessions.length === 0) {
         return res.json({
           success: false,
@@ -235,9 +227,7 @@ class TranscriptionController {
         const fullTranscription =
           transcriptionStorageService.getFullTranscription(sessionId);
         if (!fullTranscription || fullTranscription.trim() === '') {
-          console.log(
-            `[getLatestSession] Skipping session ${sessionId} - no transcriptions`,
-          );
+          log.debug(`Skipping session ${sessionId} - no transcriptions`);
           continue;
         }
 
@@ -268,7 +258,7 @@ class TranscriptionController {
       }
 
       if (!latestSession) {
-        console.log('[getLatestSession] No sessions with transcriptions found');
+        log.debug('No sessions with transcriptions found');
         return res.json({
           success: false,
           sessionId: null,
@@ -276,15 +266,13 @@ class TranscriptionController {
         });
       }
 
-      console.log(
-        `[getLatestSession] Returning latest session: ${latestSession}`,
-      );
+      log.debug(`Returning latest session: ${latestSession}`);
       res.json({
         success: true,
         sessionId: latestSession,
       });
     } catch (err) {
-      console.error('Error getting latest session:', err);
+      log.error('Error getting latest session', err);
       res.status(500).json({
         success: false,
         error: 'Failed to get latest session',

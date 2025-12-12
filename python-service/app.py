@@ -48,7 +48,13 @@ async def startup_event():
         else:
             logger.info("VAD service is disabled")
     except Exception as e:
-        logger.error(f"Failed to initialize transcription service: {e}")
+        logger.error(f"Failed to initialize transcription service: {e}", exc_info=True)
+
+# Add shutdown handler
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Cleanup on shutdown"""
+    logger.info("Python service shutting down")
 
 
 @app.get("/")

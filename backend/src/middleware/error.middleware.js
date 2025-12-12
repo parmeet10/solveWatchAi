@@ -1,9 +1,12 @@
 import multer from 'multer';
 import fs from 'fs';
 import path from 'path';
+import logger from '../utils/logger.js';
+
+const log = logger('ErrorMiddleware');
 
 export const errorHandler = (err, req, res, next) => {
-  console.error('Error:', err);
+  log.error('Request error', err);
 
   if (err instanceof multer.MulterError) {
     if (err.code === 'LIMIT_FILE_SIZE') {

@@ -1,4 +1,7 @@
 import imageProcessingService from '../services/image-processing.service.js';
+import logger from '../utils/logger.js';
+
+const log = logger('ContextController');
 
 class ContextController {
   getContextState(req, res) {
@@ -6,7 +9,7 @@ class ContextController {
       const useContextEnabled = imageProcessingService.getUseContextEnabled();
       res.json({ useContextEnabled });
     } catch (err) {
-      console.error('Error getting context state:', err);
+      log.error('Error getting context state', err);
       res.status(500).json({ error: 'Failed to get context state' });
     }
   }
@@ -16,11 +19,7 @@ class ContextController {
       const { enabled } = req.body;
       if (typeof enabled === 'boolean') {
         imageProcessingService.setUseContextEnabled(enabled);
-        console.log(
-          `🔄 Use Context ${
-            enabled ? 'ENABLED' : 'DISABLED'
-          } - Will apply to uploads, auto-detected screenshots, and clipboard monitoring`,
-        );
+        log.info(`Use Context ${enabled ? 'ENABLED' : 'DISABLED'}`);
         res.json({ success: true, useContextEnabled: enabled });
       } else {
         res
@@ -28,7 +27,7 @@ class ContextController {
           .json({ error: 'Invalid request. "enabled" must be a boolean.' });
       }
     } catch (err) {
-      console.error('Error updating context state:', err);
+      log.error('Error updating context state', err);
       res.status(500).json({ error: 'Failed to update context state' });
     }
   }

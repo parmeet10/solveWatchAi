@@ -1,8 +1,21 @@
 import fs from 'fs';
 import path from 'path';
+import logger from '../utils/logger.js';
 
-const CONFIG_FILE_PATH = path.join(process.cwd(), 'backend', 'config', 'api-keys.json');
-const EMAIL_CONFIG_FILE_PATH = path.join(process.cwd(), 'backend', 'config', 'email-config.json');
+const log = logger('ConfigController');
+
+const CONFIG_FILE_PATH = path.join(
+  process.cwd(),
+  'backend',
+  'config',
+  'api-keys.json',
+);
+const EMAIL_CONFIG_FILE_PATH = path.join(
+  process.cwd(),
+  'backend',
+  'config',
+  'email-config.json',
+);
 
 class ConfigController {
   getConfigFilePath() {
@@ -26,7 +39,7 @@ class ConfigController {
   getApiKeys(req, res) {
     try {
       const configPath = this.getConfigFilePath();
-      
+
       if (!fs.existsSync(configPath)) {
         return res.json({
           success: true,
@@ -54,7 +67,7 @@ class ConfigController {
         },
       });
     } catch (err) {
-      console.error('Error reading API keys config:', err);
+      log.error('Error reading API keys config', err);
       res.status(500).json({
         success: false,
         error: 'Failed to read configuration',
@@ -82,7 +95,7 @@ class ConfigController {
           const existingData = fs.readFileSync(configPath, 'utf8');
           existingConfig = JSON.parse(existingData);
         } catch (err) {
-          console.log('Could not read existing config, starting fresh');
+          log.warn('Could not read existing config, starting fresh');
         }
       }
 
@@ -99,9 +112,14 @@ class ConfigController {
       }
 
       // Determine enabled providers (use provided enabled array, or default to all with keys)
-      const enabledProviders = enabled && Array.isArray(enabled) 
-        ? enabled 
-        : order.filter((providerId) => mergedKeys[providerId] && mergedKeys[providerId].trim().length > 0);
+      const enabledProviders =
+        enabled && Array.isArray(enabled)
+          ? enabled
+          : order.filter(
+              (providerId) =>
+                mergedKeys[providerId] &&
+                mergedKeys[providerId].trim().length > 0,
+            );
 
       // Validate: at least one provider must be enabled
       if (enabledProviders.length === 0) {
@@ -118,7 +136,11 @@ class ConfigController {
         enabled: enabledProviders,
       };
 
-      fs.writeFileSync(configPath, JSON.stringify(configToSave, null, 2), 'utf8');
+      fs.writeFileSync(
+        configPath,
+        JSON.stringify(configToSave, null, 2),
+        'utf8',
+      );
 
       // Return masked keys
       const maskedKeys = {};
@@ -136,7 +158,7 @@ class ConfigController {
         },
       });
     } catch (err) {
-      console.error('Error saving API keys config:', err);
+      log.error('Error saving API keys config', err);
       res.status(500).json({
         success: false,
         error: 'Failed to save configuration',
@@ -147,7 +169,7 @@ class ConfigController {
   getEmailConfig(req, res) {
     try {
       const configPath = this.getEmailConfigFilePath();
-      
+
       if (!fs.existsSync(configPath)) {
         return res.json({
           success: true,
@@ -169,7 +191,7 @@ class ConfigController {
         },
       });
     } catch (err) {
-      console.error('Error reading email config:', err);
+      log.error('Error reading email config', err);
       res.status(500).json({
         success: false,
         error: 'Failed to read email configuration',
@@ -213,7 +235,11 @@ class ConfigController {
         email: enabled ? email.trim() : '',
       };
 
-      fs.writeFileSync(configPath, JSON.stringify(configToSave, null, 2), 'utf8');
+      fs.writeFileSync(
+        configPath,
+        JSON.stringify(configToSave, null, 2),
+        'utf8',
+      );
 
       res.json({
         success: true,
@@ -221,7 +247,7 @@ class ConfigController {
         config: configToSave,
       });
     } catch (err) {
-      console.error('Error saving email config:', err);
+      log.error('Error saving email config', err);
       res.status(500).json({
         success: false,
         error: 'Failed to save email configuration',
@@ -231,4 +257,3 @@ class ConfigController {
 }
 
 export default new ConfigController();
-

@@ -32,17 +32,6 @@ export function useWebSocket(onTranscription, onError) {
     const hostname = window.location.hostname;
     const protocol = window.location.protocol;
 
-    console.log('[WebSocket] Initializing connection...');
-    console.log('[WebSocket] Target URL:', `${socketUrl}/stream-transcribe`);
-    console.log('[WebSocket] Current location:', {
-      href: window.location.href,
-      origin: socketUrl,
-      hostname,
-      protocol,
-      port: window.location.port,
-    });
-    console.log('[WebSocket] Socket.io will use path: /socket.io');
-
     // Socket.io connection with explicit path configuration
     // The path should be '/socket.io' for the proxy to work correctly
     socketRef.current = io(`${socketUrl}/stream-transcribe`, {
@@ -63,31 +52,16 @@ export function useWebSocket(onTranscription, onError) {
     const socket = socketRef.current;
 
     socket.on('connect', () => {
-      console.log('[WebSocket] Connected');
       setConnected(true);
     });
 
     socket.on('disconnect', () => {
-      console.log('[WebSocket] Disconnected');
       setConnected(false);
       streamingRef.current = false; // Update ref immediately
       setStreaming(false);
     });
 
     socket.on('connect_error', (error) => {
-      console.error('[WebSocket] Connection error:', error);
-      console.error('[WebSocket] Error details:', {
-        message: error.message,
-        type: error.type,
-        description: error.description,
-        context: error.context,
-        url: socketUrl,
-        socketId: socket.id,
-        transport: socket.io?.engine?.transport?.name,
-        protocol: window.location.protocol,
-        hostname: window.location.hostname,
-        port: window.location.port,
-      });
       setConnected(false);
 
       // Provide more helpful error message
@@ -112,28 +86,24 @@ export function useWebSocket(onTranscription, onError) {
     });
 
     socket.on('stream_started', (data) => {
-      console.log('[WebSocket] Stream started:', data.sessionId);
       sessionIdRef.current = data.sessionId;
       streamingRef.current = true; // Update ref immediately
       setStreaming(true);
     });
 
     socket.on('stream_ended', () => {
-      console.log('[WebSocket] Stream ended');
       streamingRef.current = false; // Update ref immediately
       setStreaming(false);
       sessionIdRef.current = null;
     });
 
     socket.on('transcription', (data) => {
-      console.log('[WebSocket] Transcription received:', data);
       if (onTranscriptionRef.current) {
         onTranscriptionRef.current(data);
       }
     });
 
     socket.on('error', (error) => {
-      console.error('[WebSocket] Error:', error);
       if (onErrorRef.current) {
         onErrorRef.current(new Error(error.message || 'WebSocket error'));
       }
@@ -158,19 +128,11 @@ export function useWebSocket(onTranscription, onError) {
   };
 
   const sendAudioChunk = (audioChunk) => {
-    if (!socketRef.current) {
-      console.warn('[WebSocket] Cannot send chunk: socket not initialized');
-      return;
-    }
-
-    // Use ref instead of state for immediate access
-    if (!streamingRef.current) {
-      console.warn('[WebSocket] Cannot send chunk: stream not started yet');
-      return;
-    }
-
-    if (!socketRef.current.connected) {
-      console.warn('[WebSocket] Cannot send chunk: socket not connected');
+    if (
+      !socketRef.current ||
+      !streamingRef.current ||
+      !socketRef.current.connected
+    ) {
       return;
     }
 
@@ -195,10 +157,6 @@ export function useWebSocket(onTranscription, onError) {
         reader.readAsDataURL(audioChunk);
         return; // Early return for async blob reading
       } else {
-        console.warn(
-          '[WebSocket] Unknown audio chunk type:',
-          typeof audioChunk,
-        );
         return;
       }
 
@@ -206,32 +164,17 @@ export function useWebSocket(onTranscription, onError) {
         chunk: base64,
         timestamp: Date.now(),
       });
-
-      // Log occasionally to verify chunks are being sent
-      if (Math.random() < 0.1) {
-        // Log ~10% of chunks
-        console.log(
-          `[WebSocket] Sent audio chunk, size: ${
-            base64.length
-          } chars (${Math.round((base64.length * 3) / 4)} bytes)`,
-        );
-      }
     } catch (error) {
-      console.error('[WebSocket] Error sending audio chunk:', error);
+      // Silently handle chunk send errors
     }
   };
 
   const endStream = () => {
     // Use ref instead of state for immediate access
     if (socketRef.current && streamingRef.current) {
-      console.log('[WebSocket] Ending stream');
       socketRef.current.emit('end_stream');
       streamingRef.current = false; // Update ref immediately
       setStreaming(false);
-    } else {
-      console.log(
-        '[WebSocket] Cannot end stream - not streaming or socket not available',
-      );
     }
   };
 
@@ -247,22 +190,16 @@ export function useWebSocket(onTranscription, onError) {
         return;
       }
 
-      console.log(
-        `[WebSocket] Flushing buffer with cutoff timestamp: ${cutoffTimestamp}`,
-      );
-
       // Set up one-time listener for flush confirmation
       const onFlushComplete = (data) => {
         socketRef.current.off('buffer_flushed', onFlushComplete);
         socketRef.current.off('error', onError);
-        console.log('[WebSocket] Buffer flushed successfully');
         resolve(data);
       };
 
       const onError = (error) => {
         socketRef.current.off('buffer_flushed', onFlushComplete);
         socketRef.current.off('error', onError);
-        console.error('[WebSocket] Error flushing buffer:', error);
         reject(new Error(error.message || 'Failed to flush buffer'));
       };
 
@@ -279,7 +216,6 @@ export function useWebSocket(onTranscription, onError) {
       setTimeout(() => {
         socketRef.current.off('buffer_flushed', onFlushComplete);
         socketRef.current.off('error', onError);
-        console.warn('[WebSocket] Flush timeout, resolving anyway');
         resolve({ timeout: true });
       }, 3000);
     });
