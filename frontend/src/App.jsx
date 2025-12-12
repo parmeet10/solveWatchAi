@@ -413,9 +413,9 @@ function App() {
 
       <UploadSection onUploadSuccess={handleUploadSuccess} />
 
-      <Transcriber />
-
       <DataSection data={processedData} loading={loading} />
+
+      <Transcriber />
     </div>
   );
 }

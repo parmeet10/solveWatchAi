@@ -41,4 +41,3 @@ function DataSection({ data, loading }) {
 }
 
 export default DataSection;
-

@@ -15,6 +15,21 @@ from vad import vad_service
 
 logger = logging.getLogger(__name__)
 
+# Real-time streaming logger - lightweight, no buffering
+def log_chunk(session_id: str, size_bytes: int, status: str, details: str = ""):
+    """Log audio chunk processing in real-time - immediate flush"""
+    size_kb = size_bytes / 1024
+    timestamp = time.strftime("%H:%M:%S", time.localtime())
+    session_short = session_id[:8] if session_id else "unknown"
+    print(f"[{timestamp}] [{session_short}] {status:8s} | {size_kb:5.1f}KB | {details}", flush=True)
+
+def log_transcription(session_id: str, text: str, confidence: float):
+    """Log transcription result - immediate flush"""
+    timestamp = time.strftime("%H:%M:%S", time.localtime())
+    session_short = session_id[:8] if session_id else "unknown"
+    preview = text[:50] + "..." if len(text) > 50 else text
+    print(f"[{timestamp}] [{session_short}] ✨ [{confidence:.0%}] {preview}", flush=True)
+
 
 class StreamingSession:
     """Manages a single streaming transcription session"""
@@ -27,7 +42,6 @@ class StreamingSession:
         self.is_active = True
         self.last_transcription_time = 0
         self.chunk_interval = 3  # Process chunks every 3 seconds
-        self.chunks_received = 0
         self.consecutive_silence_chunks = 0
         self.min_speech_chunks = 2  # Minimum chunks with speech before processing
         self.process_until_timestamp = None  # Timestamp cutoff for flush operations
@@ -48,7 +62,7 @@ class StreamingSession:
                     return
             
             self.audio_buffer.extend(audio_data)
-            self.chunks_received += 1
+            chunk_size = len(audio_data)
             
             # Check for speech activity using VAD
             is_speech = vad_service.is_speech(audio_data, sample_rate=16000)
@@ -58,11 +72,15 @@ class StreamingSession:
                 self.speech_buffer.extend(audio_data)
                 self.consecutive_silence_chunks = 0
                 
-                logger.debug(f"Session {self.session_id}: Speech detected in chunk {self.chunks_received}")
+                # Log speech detection - immediate
+                speech_buffer_kb = len(self.speech_buffer) / 1024
+                log_chunk(self.session_id, chunk_size, "SPEECH", f"buf:{speech_buffer_kb:.1f}KB")
             else:
                 # Silence detected
                 self.consecutive_silence_chunks += 1
-                logger.debug(f"Session {self.session_id}: Silence detected in chunk {self.chunks_received} (consecutive: {self.consecutive_silence_chunks})")
+                
+                # Log silence detection - immediate
+                log_chunk(self.session_id, chunk_size, "SILENCE", f"sil:{self.consecutive_silence_chunks}")
                 
                 # If we have accumulated speech and hit silence, process the speech buffer
                 if len(self.speech_buffer) > 0 and self.consecutive_silence_chunks >= 2:
@@ -72,10 +90,12 @@ class StreamingSession:
             min_chunk_size = 16000 * 2 * self.chunk_interval  # 16kHz * 2 bytes * seconds
             
             if len(self.speech_buffer) >= min_chunk_size:
+                buffer_kb = len(self.speech_buffer) / 1024
+                print(f"[{time.strftime('%H:%M:%S', time.localtime())}] [{self.session_id[:8]}] THRESHOLD | buf:{buffer_kb:.1f}KB", flush=True)
                 await self._process_speech_buffer()
                 
         except WebSocketDisconnect:
-            logger.info(f"WebSocket disconnected while processing chunk for session {self.session_id}")
+            # WebSocket disconnected (debug only)
             self.is_active = False
         except Exception as e:
             logger.error(f"Error processing audio chunk for session {self.session_id}: {e}")
@@ -97,9 +117,15 @@ class StreamingSession:
             return
         
         try:
+            buffer_size = len(self.speech_buffer)
+            buffer_kb = buffer_size / 1024
+            
             # Check if we have sufficient speech (avoid processing very short clips)
             if not vad_service.has_sufficient_speech(self.speech_buffer, sample_rate=16000, min_speech_duration_ms=250):
                 # Clear buffer if insufficient speech
+                timestamp = time.strftime("%H:%M:%S", time.localtime())
+                session_short = self.session_id[:8] if self.session_id else "unknown"
+                print(f"[{timestamp}] [{session_short}] ⚠️  Insufficient speech, clearing {buffer_kb:.1f}KB", flush=True)
                 self.speech_buffer.clear()
                 return
             
@@ -107,7 +133,10 @@ class StreamingSession:
             chunk_to_process = bytes(self.speech_buffer)
             self.speech_buffer.clear()
             
-            logger.debug(f"Session {self.session_id}: Processing speech buffer ({len(chunk_to_process)} bytes)")
+            # Log processing start - immediate
+            timestamp = time.strftime("%H:%M:%S", time.localtime())
+            session_short = self.session_id[:8] if self.session_id else "unknown"
+            print(f"[{timestamp}] [{session_short}] 🔄 Transcribing {buffer_kb:.1f}KB...", flush=True)
             
             # Transcribe the chunk
             text, confidence = transcription_service.transcribe_chunk(
@@ -125,15 +154,13 @@ class StreamingSession:
                 }
                 
                 await self.websocket.send_json(result)
-                logger.info(f"Session {self.session_id}: Transcribed chunk - {text[:50]}...")
-        except Exception as e:
-            logger.error(f"Error processing speech buffer for session {self.session_id}: {e}")
-                    
+                # Log transcription result
+                log_transcription(self.session_id, text, confidence)
         except WebSocketDisconnect:
-            logger.info(f"WebSocket disconnected while processing chunk for session {self.session_id}")
+            # WebSocket disconnected (debug only)
             self.is_active = False
         except Exception as e:
-            logger.error(f"Error processing audio chunk for session {self.session_id}: {e}")
+            logger.error(f"Error processing speech buffer for session {self.session_id}: {e}")
             error_msg = {
                 "type": "error",
                 "sessionId": self.session_id,
@@ -173,9 +200,8 @@ class StreamingSession:
                         }
                         
                         await self.websocket.send_json(result)
-                        logger.info(f"Session {self.session_id}: Final transcription - {text[:50]}...")
+                        log_transcription(self.session_id, text, confidence)
                 except WebSocketDisconnect:
-                    logger.info(f"WebSocket disconnected while flushing buffer for session {self.session_id}")
                     self.is_active = False
                 except Exception as e:
                     logger.error(f"Error flushing buffer for session {self.session_id}: {e}")
@@ -193,7 +219,10 @@ class StreamingSession:
         """
         import time
         
-        logger.info(f"Session {self.session_id}: Starting flush with cutoff timestamp {cutoff_timestamp}, grace period {grace_period_ms}ms")
+        # Log flush operation - immediate
+        timestamp = time.strftime("%H:%M:%S", time.localtime())
+        session_short = self.session_id[:8] if self.session_id else "unknown"
+        print(f"[{timestamp}] [{session_short}] 🧹 Flush (grace:{grace_period_ms}ms)", flush=True)
         
         # Set cutoff timestamp
         self.process_until_timestamp = cutoff_timestamp
@@ -202,7 +231,7 @@ class StreamingSession:
         grace_period_seconds = grace_period_ms / 1000.0
         await asyncio.sleep(grace_period_seconds)
         
-        logger.info(f"Session {self.session_id}: Grace period ended, processing remaining buffers")
+        # Grace period ended, processing remaining buffers (debug only)
         
         # Process any remaining speech in the buffer (only chunks before cutoff)
         if len(self.speech_buffer) > 0:
@@ -229,9 +258,9 @@ class StreamingSession:
                         }
                         
                         await self.websocket.send_json(result)
-                        logger.info(f"Session {self.session_id}: Final transcription after flush - {text[:50]}...")
+                        # Final transcription sent (debug only)
                 except WebSocketDisconnect:
-                    logger.info(f"WebSocket disconnected while flushing buffer for session {self.session_id}")
+                    # WebSocket disconnected (debug only)
                     self.is_active = False
                 except Exception as e:
                     logger.error(f"Error flushing buffer for session {self.session_id}: {e}")
@@ -243,7 +272,10 @@ class StreamingSession:
         # Reset cutoff timestamp to allow new chunks
         self.process_until_timestamp = None
         
-        logger.info(f"Session {self.session_id}: Flush completed, buffers cleared")
+        # Log flush completion - immediate
+        timestamp = time.strftime("%H:%M:%S", time.localtime())
+        session_short = self.session_id[:8] if self.session_id else "unknown"
+        print(f"[{timestamp}] [{session_short}] ✅ Flush done", flush=True)
 
 
 class StreamingManager:
@@ -256,7 +288,9 @@ class StreamingManager:
         """Create a new streaming session"""
         session = StreamingSession(session_id, websocket)
         self.sessions[session_id] = session
-        logger.info(f"Created streaming session: {session_id}")
+        timestamp = time.strftime("%H:%M:%S", time.localtime())
+        session_short = session_id[:8] if session_id else "unknown"
+        print(f"[{timestamp}] [{session_short}] 🟢 Session started", flush=True)
         return session
     
     def get_session(self, session_id: str) -> Optional[StreamingSession]:
@@ -267,7 +301,9 @@ class StreamingManager:
         """Remove a session"""
         if session_id in self.sessions:
             del self.sessions[session_id]
-            logger.info(f"Removed streaming session: {session_id}")
+            timestamp = time.strftime("%H:%M:%S", time.localtime())
+            session_short = session_id[:8] if session_id else "unknown"
+            print(f"[{timestamp}] [{session_short}] 🔴 Session closed", flush=True)
     
     async def handle_websocket(self, websocket: WebSocket):
         """Handle WebSocket connection"""
@@ -296,7 +332,7 @@ class StreamingManager:
                     "sessionId": session_id
                 })
                 
-                logger.info(f"WebSocket connected: {session_id}")
+                # WebSocket connected (debug only)
                 
                 # Listen for audio chunks
                 while True:
@@ -333,7 +369,7 @@ class StreamingManager:
                                 "type": "buffer_flushed",
                                 "sessionId": session_id
                             })
-                            logger.info(f"Session {session_id}: Buffer flushed and confirmation sent")
+                            # Buffer flushed (debug only)
                         
                         elif data.get("type") == "end_stream":
                             if session:
@@ -347,7 +383,7 @@ class StreamingManager:
                             break
                             
                     except WebSocketDisconnect:
-                        logger.info(f"WebSocket disconnected for session {session_id}")
+                        # WebSocket disconnected (debug only)
                         break
                     except json.JSONDecodeError as e:
                         logger.error(f"Invalid JSON received from session {session_id}: {e}")
@@ -360,7 +396,8 @@ class StreamingManager:
                 await websocket.close(code=1008, reason="Invalid initial message")
                         
         except WebSocketDisconnect:
-            logger.info(f"WebSocket disconnected: {session_id or 'unknown'}")
+            # WebSocket disconnected (debug only)
+            pass
         except Exception as e:
             logger.error(f"WebSocket error: {e}", exc_info=True)
             try:
@@ -375,7 +412,7 @@ class StreamingManager:
                 except Exception as e:
                     logger.error(f"Error flushing buffer for session {session_id}: {e}")
                 self.remove_session(session_id)
-                logger.info(f"WebSocket disconnected: {session_id}")
+                # WebSocket disconnected (debug only)
 
 
 # Global streaming manager

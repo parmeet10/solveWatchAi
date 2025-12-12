@@ -22,12 +22,10 @@ class VADService:
         if self.enabled:
             try:
                 self._load_model()
-                logger.info(f"VAD service initialized (threshold: {self.threshold})")
+                # Only log errors, success will be logged in app.py startup
             except Exception as e:
-                logger.error(f"Failed to load VAD model: {e}. VAD will be disabled.")
+                logger.error(f"❌ Failed to load VAD model: {e}. VAD will be disabled.")
                 self.enabled = False
-        else:
-            logger.info("VAD is disabled")
     
     def _load_model(self):
         """Load Silero VAD model"""
@@ -41,7 +39,7 @@ class VADService:
             )
             self.model = model
             self.model.eval()  # Set to evaluation mode
-            logger.info("Silero VAD model loaded successfully")
+            # Success will be logged in app.py startup
         except Exception as e:
             logger.error(f"Error loading Silero VAD model: {e}")
             raise

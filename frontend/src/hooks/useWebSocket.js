@@ -32,16 +32,35 @@ export function useWebSocket(onTranscription, onError) {
     const hostname = window.location.hostname;
     const protocol = window.location.protocol;
 
+    console.log(
+      '[useWebSocket] Initializing connection to:',
+      `${socketUrl}/stream-transcribe`,
+    );
+    console.log('[useWebSocket] Current URL:', window.location.href);
+    console.log('[useWebSocket] Protocol:', protocol, 'Hostname:', hostname);
+
+    // Test if backend is reachable first
+    fetch('/api/config/keys')
+      .then((res) => {
+        console.log(
+          '[useWebSocket] Backend API test:',
+          res.ok ? 'OK' : 'Failed',
+        );
+      })
+      .catch((err) => {
+        console.error('[useWebSocket] Backend API test failed:', err);
+      });
+
     // Socket.io connection with explicit path configuration
     // The path should be '/socket.io' for the proxy to work correctly
     socketRef.current = io(`${socketUrl}/stream-transcribe`, {
       path: '/socket.io',
-      transports: ['websocket', 'polling'],
+      transports: ['websocket'], // WebSocket only, no polling
       reconnection: true,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
       reconnectionAttempts: Infinity,
-      timeout: 20000,
+      timeout: 30000, // 30 seconds timeout
       autoConnect: true,
       forceNew: false,
       // Additional options for better connection handling
@@ -51,17 +70,58 @@ export function useWebSocket(onTranscription, onError) {
 
     const socket = socketRef.current;
 
+    // Debug connection state
+    console.log(
+      '[useWebSocket] Socket created, initial state:',
+      socket.connected,
+    );
+    console.log('[useWebSocket] Socket URL:', socket.io.uri);
+    console.log(
+      '[useWebSocket] Socket transport:',
+      socket.io.engine?.transport?.name,
+    );
+
+    // Check if already connected
+    if (socket.connected) {
+      console.log('[useWebSocket] Socket already connected!', socket.id);
+      setConnected(true);
+    }
+
     socket.on('connect', () => {
+      console.log('[useWebSocket] Socket connected!', socket.id);
       setConnected(true);
     });
 
-    socket.on('disconnect', () => {
+    // Also check connection state periodically in case event doesn't fire
+    const checkConnection = setInterval(() => {
+      if (socket.connected && !connected) {
+        console.log(
+          '[useWebSocket] Socket is connected but state was false, updating...',
+        );
+        setConnected(true);
+      }
+    }, 1000);
+
+    socket.on('disconnect', (reason) => {
+      console.log('[useWebSocket] Socket disconnected:', reason);
       setConnected(false);
       streamingRef.current = false; // Update ref immediately
       setStreaming(false);
     });
 
     socket.on('connect_error', (error) => {
+      console.error('[useWebSocket] Connection error:', error);
+      console.error('[useWebSocket] Error details:', {
+        message: error.message,
+        type: error.type,
+        description: error.description,
+        data: error.data,
+      });
+      console.error('[useWebSocket] Socket state:', {
+        connected: socket.connected,
+        disconnected: socket.disconnected,
+        id: socket.id,
+      });
       setConnected(false);
 
       // Provide more helpful error message
@@ -110,6 +170,7 @@ export function useWebSocket(onTranscription, onError) {
     });
 
     return () => {
+      clearInterval(checkConnection);
       if (socket) {
         socket.disconnect();
         socketRef.current = null;
@@ -118,11 +179,32 @@ export function useWebSocket(onTranscription, onError) {
   }, []); // Empty dependency array - only run once
 
   const startStream = () => {
-    if (socketRef.current && socketRef.current.connected) {
-      socketRef.current.emit('start_stream');
+    if (!socketRef.current) {
+      console.error('[useWebSocket] startStream: Socket not initialized');
+      if (onErrorRef.current) {
+        onErrorRef.current(new Error('Socket not initialized'));
+      }
+      return;
+    }
+
+    const socket = socketRef.current;
+    console.log('[useWebSocket] startStream: Socket state:', {
+      connected: socket.connected,
+      disconnected: socket.disconnected,
+      id: socket.id,
+    });
+
+    if (socket.connected) {
+      console.log('[useWebSocket] Emitting start_stream');
+      socket.emit('start_stream');
     } else {
-      if (onError) {
-        onError(new Error('Not connected to server'));
+      console.error(
+        '[useWebSocket] Cannot start stream - socket not connected',
+      );
+      if (onErrorRef.current) {
+        onErrorRef.current(
+          new Error('Not connected to server. Please wait for connection.'),
+        );
       }
     }
   };
