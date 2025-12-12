@@ -57,6 +57,8 @@ An intelligent application that automatically extracts text from screenshots, mo
 - **macOS** (for screenshot monitoring - can be adapted for other OS)
 - At least one AI provider API key (OpenAI, Groq, or Gemini)
 
+> **Note:** The Python virtual environment (`venv`) is not included in the repository. It will be created automatically during installation.
+
 ## 🛠️ Installation
 
 ### 1. Clone and Install Dependencies
