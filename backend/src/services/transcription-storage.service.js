@@ -95,6 +95,91 @@ class TranscriptionStorageService {
   getActiveSessions() {
     return Array.from(this.sessions.keys());
   }
+
+  /**
+   * Get transcriptions for a session since a specific timestamp (optimized)
+   * If no transcriptions found in the time window, falls back to most recent transcription
+   * This handles cases where there's silence after a question
+   * @param {string} sessionId - Session ID
+   * @param {number} sinceTimestamp - Unix timestamp in milliseconds
+   * @param {number} maxLookbackSeconds - Maximum seconds to look back if no transcriptions found (default: 30)
+   * @returns {string} Combined transcription text since the timestamp
+   */
+  getTranscriptionSince(sessionId, sinceTimestamp, maxLookbackSeconds = 30) {
+    const session = this.sessions.get(sessionId);
+    if (!session || session.transcriptions.length === 0) {
+      return '';
+    }
+
+    const transcriptions = session.transcriptions;
+    const sinceTime = sinceTimestamp;
+    const maxLookbackTime = sinceTimestamp - maxLookbackSeconds * 1000;
+
+    // Find the first transcription that's >= sinceTimestamp
+    let startIndex = transcriptions.length;
+    for (let i = transcriptions.length - 1; i >= 0; i--) {
+      const transTime = transcriptions[i].timestamp.getTime();
+      if (transTime < sinceTime) {
+        startIndex = i + 1;
+        break;
+      }
+    }
+
+    // If we found transcriptions in the time window, use them
+    if (startIndex < transcriptions.length) {
+      const parts = [];
+      for (let i = startIndex; i < transcriptions.length; i++) {
+        const text = transcriptions[i].text.trim();
+        if (text.length > 0) {
+          parts.push(text);
+        }
+      }
+      return parts.join(' ');
+    }
+
+    // No transcriptions in the time window - fallback to most recent transcription
+    // Find the most recent transcription (going backwards from the end)
+    for (let i = transcriptions.length - 1; i >= 0; i--) {
+      const transTime = transcriptions[i].timestamp.getTime();
+      const text = transcriptions[i].text.trim();
+
+      // If we find a transcription within maxLookback window and it has content
+      if (transTime >= maxLookbackTime && text.length > 0) {
+        // Include everything from this transcription onwards
+        const parts = [];
+        for (let j = i; j < transcriptions.length; j++) {
+          const t = transcriptions[j].text.trim();
+          if (t.length > 0) {
+            parts.push(t);
+          }
+        }
+        return parts.join(' ');
+      }
+    }
+
+    return '';
+  }
+
+  /**
+   * Get transcriptions for a session within the last N seconds
+   * Falls back to most recent transcription if none found in the window
+   * @param {string} sessionId - Session ID
+   * @param {number} secondsAgo - Number of seconds to look back
+   * @param {number} maxLookbackSeconds - Maximum seconds to look back if no transcriptions found (default: 30)
+   * @returns {string} Combined transcription text from the last N seconds
+   */
+  getTranscriptionLastSeconds(
+    sessionId,
+    secondsAgo = 10,
+    maxLookbackSeconds = 30,
+  ) {
+    const sinceTimestamp = Date.now() - secondsAgo * 1000;
+    return this.getTranscriptionSince(
+      sessionId,
+      sinceTimestamp,
+      maxLookbackSeconds,
+    );
+  }
 }
 
 export default new TranscriptionStorageService();

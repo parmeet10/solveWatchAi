@@ -56,9 +56,33 @@ class TranscriptionController {
         // Continue anyway - might still have transcriptions
       }
 
-      // Get full transcription for the session
-      const transcriptionText =
-        transcriptionStorageService.getFullTranscription(sessionId);
+      // Get transcription for the session
+      // If cutoffTimestamp is provided, only get transcriptions from last 10 seconds
+      // Falls back to most recent transcription if none found (handles silence periods)
+      let transcriptionText;
+      
+      if (cutoffTimestamp) {
+        // Calculate: get transcriptions from last 10 seconds before cutoff
+        const timeWindowMs = 10 * 1000; // 10 seconds
+        const sinceTimestamp = cutoffTimestamp - timeWindowMs;
+        
+        // maxLookbackSeconds = 30 means if no transcriptions in last 10 seconds,
+        // it will look back up to 30 seconds to find the most recent question
+        transcriptionText = transcriptionStorageService.getTranscriptionSince(
+          sessionId,
+          sinceTimestamp,
+          30 // maxLookbackSeconds: look back up to 30 seconds if needed
+        );
+        
+        log.debug('Using filtered transcription (last 10 seconds with fallback)', {
+          cutoffTimestamp,
+          sinceTimestamp,
+          transcriptionLength: transcriptionText.length,
+        });
+      } else {
+        // Fallback to full transcription if no cutoff provided
+        transcriptionText = transcriptionStorageService.getFullTranscription(sessionId);
+      }
 
       // Debug: Check what sessions exist
       const activeSessions = transcriptionStorageService.getActiveSessions();
