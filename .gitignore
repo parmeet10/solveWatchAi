@@ -148,3 +148,12 @@ backend/config/api-keys.json
 
 # Email configuration
 backend/config/email-config.json
+
+# Python virtual environment
+python-service/venv/
+python-service/__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python

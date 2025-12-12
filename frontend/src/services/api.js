@@ -122,6 +122,34 @@ class ApiService {
 
     return response.json();
   }
+
+  async processTranscription(sessionId, cutoffTimestamp = null) {
+    const response = await fetch(`${API_BASE_URL}/transcription/process`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ sessionId, cutoffTimestamp }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to process transcription');
+    }
+
+    return response.json();
+  }
+
+  async getTranscription(sessionId) {
+    const response = await fetch(`${API_BASE_URL}/transcription/${sessionId}`);
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to get transcription');
+    }
+
+    return response.json();
+  }
 }
 
 export default new ApiService();

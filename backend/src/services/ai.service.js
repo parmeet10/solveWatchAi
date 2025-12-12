@@ -4,8 +4,11 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
+import logger from '../utils/logger.js';
 
 dotenv.config();
+
+const log = logger('AIService');
 
 const CONFIG_FILE_PATH = path.join(
   process.cwd(),
@@ -52,7 +55,7 @@ class AIService {
         }
       }
     } catch (err) {
-      console.error('Error loading AI config:', err);
+      log.error('Error loading AI config', err);
       this.config = { keys: {}, order: [] };
     }
   }
@@ -96,11 +99,9 @@ class AIService {
       if (timeSinceFailure >= this.FAILURE_TIMEOUT) {
         // Timeout passed, remove from failed list and retry
         this.failedProviders.delete(providerId);
-        console.log(
-          `🔄 Retrying ${providerId} after timeout (${Math.round(
-            timeSinceFailure / 1000,
-          )}s since failure)`,
-        );
+        log.info(`Retrying ${providerId} after timeout`, {
+          timeSinceFailure: `${Math.round(timeSinceFailure / 1000)}s`,
+        });
         return true;
       }
 
@@ -111,18 +112,16 @@ class AIService {
 
   markProviderAsFailed(providerId) {
     this.failedProviders.set(providerId, Date.now());
-    console.log(
-      `⚠️  Marked ${providerId} as failed. Will skip for ${
-        this.FAILURE_TIMEOUT / 1000
-      }s`,
-    );
+    log.warn(`Marked ${providerId} as failed`, {
+      retryAfter: `${this.FAILURE_TIMEOUT / 1000}s`,
+    });
   }
 
   markProviderAsSuccess(providerId) {
     // Clear failed status if provider succeeds
     if (this.failedProviders.has(providerId)) {
       this.failedProviders.delete(providerId);
-      console.log(`✅ ${providerId} recovered - removed from failed list`);
+      log.info(`${providerId} recovered - removed from failed list`);
     }
   }
 
@@ -233,7 +232,7 @@ class AIService {
 
     for (const providerId of providers) {
       try {
-        console.log(`🤖 Trying ${providerId}...`);
+        log.debug(`Trying AI provider: ${providerId}`);
         let response;
 
         switch (providerId) {
@@ -252,7 +251,7 @@ class AIService {
 
         // Mark provider as successful (clear any failed status)
         this.markProviderAsSuccess(providerId);
-        console.log(`✅ Success with ${providerId}`);
+        log.info(`Success with AI provider: ${providerId}`);
         return {
           message: {
             content: response,
@@ -260,7 +259,7 @@ class AIService {
           provider: providerId,
         };
       } catch (err) {
-        console.error(`❌ ${providerId} failed:`, err.message);
+        log.warn(`${providerId} failed`, { error: err.message });
         // Mark provider as failed
         this.markProviderAsFailed(providerId);
         lastError = err;
@@ -286,7 +285,7 @@ class AIService {
       );
       return fs.readFileSync(promptPath, 'utf8').trim();
     } catch (err) {
-      console.log('Warning: Could not read prompt file, using default prompt');
+      log.warn('Could not read prompt file, using default prompt');
       return 'Analyze this screenshot text and provide insights';
     }
   }
@@ -306,9 +305,7 @@ class AIService {
       );
       return contextPrompt;
     } catch (err) {
-      console.log(
-        'Warning: Could not read context prompt file, using default prompt',
-      );
+      log.warn('Could not read context prompt file, using default prompt');
       return `Previous context:\n${context}\n\nAnalyze this screenshot text and provide insights`;
     }
   }
@@ -323,10 +320,25 @@ class AIService {
       );
       return fs.readFileSync(promptPath, 'utf8').trim();
     } catch (err) {
-      console.log(
-        'Warning: Could not read clipboard prompt file, using default prompt',
-      );
+      log.warn('Could not read clipboard prompt file, using default prompt');
       return 'Analyze this clipboard content and solve any questions or provide code output';
+    }
+  }
+
+  readAudioTranscriptionPromptFromFile() {
+    try {
+      const promptPath = path.join(
+        process.cwd(),
+        'backend',
+        'prompts',
+        'audio-transcription-prompt.txt',
+      );
+      return fs.readFileSync(promptPath, 'utf8').trim();
+    } catch (err) {
+      log.warn(
+        'Could not read audio transcription prompt file, using default prompt',
+      );
+      return 'Extract questions from this audio transcription and provide comprehensive answers. If no questions are found, provide a summary of the content.';
     }
   }
 
@@ -384,6 +396,27 @@ class AIService {
       {
         role: 'user',
         content: `Clipboard content:\n${clipboardContent}`,
+      },
+    ];
+
+    return await this.callAIWithFallback(messages, {
+      temperature: 0.7,
+      max_tokens: 2048,
+    });
+  }
+
+  async askGptTranscription(transcriptionText) {
+    this.reloadConfig();
+    const systemPrompt = this.readAudioTranscriptionPromptFromFile();
+
+    const messages = [
+      {
+        role: 'system',
+        content: systemPrompt,
+      },
+      {
+        role: 'user',
+        content: `Audio transcription:\n${transcriptionText}`,
       },
     ];
 

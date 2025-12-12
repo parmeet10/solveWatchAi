@@ -1,440 +1,359 @@
-# 📸 solveWatchAi
+# CodeSnapGPT - AI-Powered Screenshot & Audio Analysis
 
-**AI-Powered Screenshot and Clipboard Analysis Tool**
+An intelligent application that automatically extracts text from screenshots, monitors clipboard content, transcribes audio, and provides AI-powered analysis using multiple AI providers (OpenAI, Groq, Gemini) with automatic fallback.
 
-solveWatchAi is an intelligent application that automatically monitors screenshots and clipboard content, extracts text using OCR, and provides AI-powered analysis and solutions using multiple AI providers (OpenAI, Groq, Gemini) with automatic fallback mechanisms.
+## 🚀 Core Features
 
-## ✨ Features
+### 1. **Screenshot Monitoring & OCR**
 
-### Core Functionality
-- **🖼️ Automatic Screenshot Monitoring**: Monitors a designated screenshots directory and automatically processes new screenshots
-- **📋 Clipboard Monitoring**: Real-time clipboard monitoring with automatic processing of copied content
-- **🔍 OCR Text Extraction**: Extracts text from images using Tesseract.js
-- **🤖 Multi-AI Provider Support**: Supports OpenAI, Groq (via Groq SDK), and Google Gemini with automatic fallback
-- **🔄 Smart Fallback System**: Automatically switches between AI providers if one fails, with retry mechanisms
-- **📧 Email Notifications**: Optional email notifications for processed screenshots
-- **🌐 Web Interface**: Modern React-based web UI for viewing results and configuration
-- **📱 Cross-Device Access**: Accessible from multiple devices on the same network
+- Automatically monitors a designated screenshots directory
+- Extracts text from images using OCR (Tesseract.js)
+- Processes new screenshots automatically when detected
+- Supports context-aware processing (uses previous responses as context)
 
-### Advanced Features
-- **🧠 Context-Aware Processing**: Maintains context between screenshots/clipboard entries for better analysis
-- **⚙️ Configurable API Keys**: Web-based UI for managing API keys without editing files
-- **🎯 Provider Priority**: Configure which AI providers to use and in what order
-- **🛡️ Error Handling**: Robust error handling with graceful degradation
-- **📊 Processing History**: View all processed screenshots and clipboard content with timestamps
+### 2. **Clipboard Monitoring**
 
-## 🏗️ Architecture
+- Monitors clipboard changes in real-time
+- Automatically processes clipboard content with AI
+- Can be toggled on/off from the UI
+- Supports manual processing via keyboard shortcut (Cmd+Shift+V / Ctrl+Shift+V)
 
-The application consists of two main components:
+### 3. **AI-Powered Analysis**
 
-1. **Backend (Node.js/Express)**: 
-   - RESTful API server
-   - Screenshot monitoring service
-   - Clipboard monitoring service
-   - OCR processing
-   - AI service with multi-provider support
-   - Email service
+- Multi-provider support: OpenAI, Groq (via Groq SDK), and Google Gemini
+- Automatic fallback if one provider fails
+- Configurable provider priority and selection
+- Context-aware processing mode
+- Specialized prompts for different content types:
+  - Screenshot analysis (coding problems, solutions)
+  - Clipboard content (code execution, debugging)
+  - Audio transcription (question extraction and answers)
 
-2. **Frontend (React/Vite)**:
-   - Modern web interface
-   - Real-time data updates
-   - API key configuration
-   - Email configuration
-   - Upload interface
+### 4. **Real-Time Audio Transcription**
+
+- **Live Streaming**: Real-time audio transcription via WebSocket
+- **File Upload**: Upload audio files (MP3, WAV, M4A, etc.) for transcription
+- Uses mlx-whisper (optimized for Apple Silicon) for fast, accurate transcription
+- Voice Activity Detection (VAD) to filter silence
+- Process transcriptions with AI by pressing "P+P" (double P)
+
+### 5. **Email Notifications**
+
+- Optional email notifications for processed content
+- Configurable via UI
+- Sends AI responses to your email
+
+### 6. **Real-Time Updates**
+
+- WebSocket-based real-time data updates
+- No polling required
+- Instant UI updates when new content is processed
 
 ## 📋 Prerequisites
 
-- **Node.js** (v16 or higher)
-- **npm** (v7 or higher)
-- **Tesseract OCR Training Data**: The `eng.traineddata` file should be in the project root
-- **API Keys** (at least one):
-  - OpenAI API key (optional)
-  - Groq API key (optional)
-  - Google Gemini API key (optional)
-- **Email Configuration** (optional, for email notifications):
-  - Gmail account with App Password
+- **Node.js** 18+ and npm
+- **Python** 3.8+ (for transcription service)
+- **FFmpeg** (for audio processing)
+- **macOS** (for screenshot monitoring - can be adapted for other OS)
+- At least one AI provider API key (OpenAI, Groq, or Gemini)
 
-## 🚀 Installation
+> **Note:** The Python virtual environment (`venv`) is not included in the repository. It will be created automatically during installation.
 
-### 1. Clone the Repository
+## 🛠️ Installation
+
+### 1. Clone and Install Dependencies
 
 ```bash
-git clone <repository-url>
-cd solveWatchAi
-```
-
-### 2. Install Dependencies
-
-Install dependencies for both root and frontend:
-
-```bash
+# Install all dependencies (Node.js, Frontend, and Python)
 npm run install:all
 ```
 
-Or install separately:
+This will:
 
-```bash
-# Install root dependencies
-npm install
+- Install Node.js dependencies
+- Install frontend dependencies
+- Create Python virtual environment
+- Install Python dependencies
+- Check for FFmpeg installation
 
-# Install frontend dependencies
-cd frontend
-npm install
-cd ..
-```
+### 2. Configure Environment Variables
 
-### 3. Environment Setup
-
-Create a `.env` file in the root directory (optional, as API keys can be configured via UI):
+Create a `.env` file in the root directory:
 
 ```env
-# Optional: API Keys (can also be configured via web UI)
-OPENAI_API_KEY=your_openai_key_here
-GROQ_API_KEY=your_groq_key_here
-GEMINI_API_KEY=your_gemini_key_here
-
-# Optional: Email Configuration (for email notifications)
-EMAIL_USER=your_email@gmail.com
-EMAIL_PASS=your_app_password
-EMAIL_FROM=your_email@gmail.com
-
-# Optional: Server Configuration
+# Server Configuration
 PORT=4000
 HTTPS_PORT=8443
-FUNCTION_INTERVAL=5000
-SCREENSHOTS_PATH=/path/to/your/screenshots
+SCREENSHOTS_PATH=/Users/your-username/Documents/screenshots
+
+# Python Service Configuration
+PYTHON_SERVICE_URL=http://localhost:8000
+PYTHON_SERVICE_WS_URL=ws://localhost:8000
+
+# Email Configuration (Optional)
+EMAIL_USER=your-email@gmail.com
+EMAIL_PASS=your-app-password
+EMAIL_FROM=your-email@gmail.com
+
+# Logging (Optional)
+LOG_LEVEL=INFO  # Options: ERROR, WARN, INFO, DEBUG
 ```
 
-### 4. Configure Screenshots Directory
+### 3. Generate SSL Certificates (Optional, for HTTPS)
 
-By default, the app monitors `/Users/parmeet1.0/Documents/screenshots`. You can change this by:
-
-- Setting `SCREENSHOTS_PATH` in `.env`
-- Or modifying `backend/src/config/constants.js`
-
-Make sure the directory exists or it will be created automatically.
-
-### 5. Build Frontend (Optional, for production)
+For mobile device access (iPhone/iPad), generate SSL certificates:
 
 ```bash
-npm run build
+node generate-cert.js
 ```
 
-## 🎮 Usage
+Or use the shell script:
+
+```bash
+./generate-cert.sh
+```
+
+## 🎯 Usage
 
 ### Starting the Application
 
-#### Development Mode (Recommended)
-
-Start both backend and frontend in development mode:
+#### Option 1: Start All Services (Recommended)
 
 ```bash
 npm run start:all
 ```
 
-Or start them separately:
+This starts:
+
+- Python transcription service (port 8000)
+- Node.js backend server (port 4000)
+- React frontend (port 3000)
+- Electron keyboard listener (optional)
+
+#### Option 2: Start Without Electron
 
 ```bash
-# Terminal 1: Start backend
-npm run dev
-
-# Terminal 2: Start frontend
-npm run dev:frontend
+npm run start:all:no-electron
 ```
 
-#### Production Mode
+#### Option 3: Start Services Individually
 
 ```bash
-# Build frontend first
-npm run build
+# Terminal 1: Python service
+npm run dev:python
 
-# Start backend (serves built frontend)
-npm start
+# Terminal 2: Backend server
+npm run dev
+
+# Terminal 3: Frontend
+npm run dev:frontend
 ```
 
 ### Accessing the Application
 
-Once started, access the application at:
+- **Local**: http://localhost:4000
+- **Network**: http://YOUR_LOCAL_IP:4000
+- **HTTPS (if configured)**: https://localhost:8443 or https://YOUR_LOCAL_IP:8443
 
-- **Local**: `http://localhost:4000`
-- **Network**: `http://<your-ip>:4000` (for access from other devices)
+### Configuring API Keys
 
-If HTTPS certificates (`cert.pem` and `key.pem`) are present, HTTPS will also be available on port 8443.
-
-### Initial Configuration
-
-1. **Configure API Keys**:
-   - Click "🔑 Configure API Keys (Required)" button
-   - Enter at least one API key (OpenAI, Groq, or Gemini)
-   - Select which providers to enable
-   - Save configuration
-
-2. **Configure Email (Optional)**:
-   - Click "📧 Configure Email" button
-   - Enter your email address
-   - Enable/disable email notifications
-   - Save configuration
+1. Click "Configure API Keys" button in the UI
+2. Add at least one AI provider API key:
+   - **OpenAI**: Get from https://platform.openai.com/api-keys
+   - **Groq**: Get from https://console.groq.com/keys
+   - **Gemini**: Get from https://makersuite.google.com/app/apikey
+3. Select which providers to enable
+4. Set provider priority order
+5. Save configuration
 
 ### Using Screenshot Monitoring
 
-1. Take a screenshot and save it to the monitored directory (default: `/Users/parmeet1.0/Documents/screenshots`)
-2. The application will automatically detect and process it
-3. View results in the web interface
+1. Set up screenshot directory path in `.env` (SCREENSHOTS_PATH)
+2. Take screenshots and save them to that directory
+3. The application will automatically:
+   - Detect new screenshots
+   - Extract text using OCR
+   - Process with AI
+   - Display results in the UI
 
-**macOS Screenshot Tips**:
-- `Cmd + Shift + 3`: Full screen screenshot
-- `Cmd + Shift + 4`: Selection screenshot
-- Screenshots are saved to Desktop by default; move them to the monitored directory or change the default location
+**macOS Screenshot Shortcut**: `Cmd+Shift+4` (select area) or `Cmd+Shift+3` (full screen)
 
 ### Using Clipboard Monitoring
 
-The application automatically monitors clipboard changes. You can:
+1. Enable "Auto-process" toggle in the UI (enabled by default)
+2. Copy any text (Cmd+C / Ctrl+C)
+3. Click anywhere on the page or paste (Cmd+V)
+4. The clipboard content will be automatically processed
 
-1. **Auto-Process Mode (Default)**:
-   - Copy any text (Cmd+C / Ctrl+C)
-   - Click anywhere on the web page or paste (Cmd+V)
-   - The content will be automatically processed
+**Manual Processing**: Press `Cmd+Shift+V` (Mac) or `Ctrl+Shift+V` (Windows/Linux)
 
-2. **Manual Process**:
-   - Copy text
-   - Click "Process Now" button
-   - Or use keyboard shortcut: `Cmd+Shift+V` (Mac) or `Ctrl+Shift+V` (Windows/Linux)
+### Using Audio Transcription
 
-3. **Toggle Auto-Process**:
-   - Use the "Auto-process: ON/OFF" toggle in the header
+#### Live Streaming Transcription
 
-### Uploading Images
+1. Click "Start Recording" button
+2. Speak into your microphone
+3. See real-time transcriptions appear
+4. Press "P+P" (double P key) to process the transcription with AI
+5. Click "Stop Recording" when done
 
-1. Click "Choose File" in the Upload Section
-2. Select an image file (JPEG, PNG, GIF, BMP, WebP)
-3. Click "Upload and Process"
-4. View results in the Data Section
+#### File Upload Transcription
 
-## 🔌 API Endpoints
+1. Click "Upload Audio File" button
+2. Select an audio file (MP3, WAV, M4A, etc.)
+3. Wait for transcription to complete
+4. The transcription will be displayed in the terminal
 
-### Image Processing
+### Context Mode
 
-- `POST /api/upload` - Upload and process an image
-  - Body: `multipart/form-data` with `image` field
-  - Response: `{ success: boolean, message: string }`
+Enable "Context Mode" to use previous AI responses as context for new analyses. This is useful for:
 
-- `GET /api/data` - Get all processed data
-  - Response: `Array<{ filename, timestamp, extractedText, gptResponse, usedContext }>`
-
-### Clipboard Processing
-
-- `POST /api/clipboard` - Process clipboard content
-  - Body: `{ content: string }`
-  - Response: `{ success: boolean, message: string }`
-
-### Configuration
-
-- `GET /api/config/keys` - Get API keys configuration
-  - Response: `{ success: boolean, config: { keys, order, enabled } }`
-
-- `POST /api/config/keys` - Save API keys configuration
-  - Body: `{ keys: object, order: array, enabled: array }`
-  - Response: `{ success: boolean, message: string }`
-
-- `GET /api/config/email` - Get email configuration
-  - Response: `{ success: boolean, config: { enabled, email } }`
-
-- `POST /api/config/email` - Save email configuration
-  - Body: `{ enabled: boolean, email: string }`
-  - Response: `{ success: boolean, message: string }`
-
-### Context Management
-
-- `GET /api/context-state` - Get context mode state
-  - Response: `{ useContext: boolean }`
-
-- `POST /api/context-state` - Update context mode state
-  - Body: `{ useContext: boolean }`
-  - Response: `{ success: boolean }`
+- Following up on previous questions
+- Building on previous solutions
+- Maintaining conversation context
 
 ## 📁 Project Structure
 
 ```
 solveWatchAi/
-├── backend/
-│   ├── config/
-│   │   └── api-keys.json          # API keys configuration (gitignored)
-│   ├── prompts/
-│   │   ├── system-prompt.txt      # System prompt for AI
-│   │   ├── context-prompt.txt     # Context-aware prompt template
-│   │   └── clipboard-prompt.txt   # Clipboard-specific prompt
-│   └── src/
-│       ├── config/
-│       │   └── constants.js        # Application constants
-│       ├── controllers/
-│       │   ├── clipboard.controller.js
-│       │   ├── config.controller.js
-│       │   ├── context.controller.js
-│       │   └── image.controller.js
-│       ├── middleware/
-│       │   ├── error.middleware.js
-│       │   └── upload.middleware.js
-│       ├── routes/
-│       │   ├── clipboard.routes.js
-│       │   ├── config.routes.js
-│       │   ├── context.routes.js
-│       │   └── image.routes.js
-│       ├── services/
-│       │   ├── ai.service.js           # Multi-provider AI service
-│       │   ├── clipboard-monitor.service.js
-│       │   ├── email.service.js
-│       │   ├── image-processing.service.js
-│       │   ├── ocr.service.js
-│       │   └── screenshot-monitor.service.js
-│       ├── app.js                      # Express app setup
-│       └── server.js                   # Server entry point
-├── frontend/
+├── backend/                 # Node.js backend
 │   ├── src/
-│   │   ├── components/
-│   │   │   ├── ApiKeyConfig.jsx
-│   │   │   ├── DataSection.jsx
-│   │   │   ├── EmailConfig.jsx
-│   │   │   ├── ScreenshotItem.jsx
-│   │   │   └── UploadSection.jsx
-│   │   ├── services/
-│   │   │   └── api.js                 # API service client
-│   │   ├── App.jsx                    # Main React component
-│   │   ├── App.css
-│   │   ├── index.css
-│   │   └── main.jsx                   # React entry point
-│   ├── dist/                          # Built frontend (generated)
-│   ├── index.html
-│   ├── package.json
-│   └── vite.config.js
-├── uploads/                           # Uploaded images (gitignored)
-├── eng.traineddata                    # Tesseract OCR training data
-├── package.json                       # Root package.json
-└── .env                               # Environment variables (gitignored)
+│   │   ├── config/         # Configuration files
+│   │   ├── controllers/    # API controllers
+│   │   ├── middleware/     # Express middleware
+│   │   ├── routes/         # API routes
+│   │   ├── services/       # Business logic services
+│   │   ├── sockets/        # WebSocket handlers
+│   │   └── utils/          # Utility functions (logger, etc.)
+│   ├── prompts/            # AI prompt templates
+│   └── config/             # Configuration files (API keys, email)
+├── frontend/                # React frontend
+│   ├── src/
+│   │   ├── components/     # React components
+│   │   ├── hooks/          # Custom React hooks
+│   │   ├── services/       # API services
+│   │   └── utils/          # Utility functions
+│   └── electron/           # Electron app for global shortcuts
+├── python-service/          # Python transcription service
+│   ├── app.py              # FastAPI application
+│   ├── transcription.py   # Transcription logic
+│   ├── streaming.py        # WebSocket streaming
+│   └── vad.py              # Voice Activity Detection
+└── electron-helper/        # Global keyboard shortcut helper
 ```
 
-## 🛠️ Technologies Used
+## 🔧 Configuration
 
-### Backend
-- **Express.js** - Web framework
-- **Tesseract.js** - OCR text extraction
-- **OpenAI SDK** - OpenAI API integration
-- **Groq SDK** - Groq API integration
-- **Google Generative AI** - Gemini API integration
-- **Nodemailer** - Email sending
-- **Multer** - File upload handling
-- **clipboardy** - Clipboard monitoring
-- **screenshot-desktop** - Screenshot capture utilities
+### Screenshot Directory
 
-### Frontend
-- **React** - UI framework
-- **Vite** - Build tool and dev server
+Set `SCREENSHOTS_PATH` in `.env` to your desired screenshot directory. Default: `/Users/your-username/Documents/screenshots`
 
-## ⚙️ Configuration Details
+### Python Service Configuration
 
-### API Keys Configuration
+Environment variables in `python-service/.env`:
 
-API keys can be configured via:
-1. **Web UI** (Recommended): Use the "Configure API Keys" button
-2. **Environment Variables**: Set in `.env` file
-3. **Config File**: Edit `backend/config/api-keys.json` directly
+- `PYTHON_SERVICE_PORT`: Port number (default: 8000)
+- `WHISPER_MODEL`: Model size - tiny, base, small, medium, large (default: small)
+- `ENABLE_VAD`: Enable Voice Activity Detection (default: true)
+- `VAD_THRESHOLD`: VAD sensitivity 0.0-1.0 (default: 0.5)
+- `CHUNK_LENGTH_S`: Chunk length for file transcription (default: 30)
 
-The configuration supports:
-- Multiple providers (OpenAI, Groq, Gemini)
-- Provider priority order
-- Enable/disable specific providers
-- Automatic fallback on failure
+### Logging
 
-### Email Configuration
+Set `LOG_LEVEL` in `.env`:
 
-Email notifications require:
-- Gmail account
-- App Password (not regular password)
-- Enable "Less secure app access" or use App Passwords
+- `ERROR`: Only errors
+- `WARN`: Warnings and errors
+- `INFO`: Info, warnings, and errors (default)
+- `DEBUG`: All logs including debug information
 
-To get a Gmail App Password:
-1. Go to Google Account settings
-2. Security → 2-Step Verification (must be enabled)
-3. App passwords → Generate new app password
-4. Use this password in `EMAIL_PASS`
+## 🐛 Troubleshooting
 
-### Context Mode
+### Screenshots Not Being Detected
 
-Context mode maintains conversation context between screenshots/clipboard entries:
-- Enabled via API endpoint or service method
-- Uses previous AI response as context for next analysis
-- Useful for multi-step problem solving
+- Verify `SCREENSHOTS_PATH` in `.env` is correct
+- Ensure the directory exists and is writable
+- Check file permissions
 
-## 🔧 Troubleshooting
+### Clipboard Not Working
 
-### Common Issues
+- Grant clipboard permissions in browser/system settings
+- Try manual processing with `Cmd+Shift+V`
+- Check browser console for errors
 
-1. **"No AI providers configured"**
-   - Solution: Configure at least one API key via the web UI
+### Audio Transcription Not Working
 
-2. **OCR not working**
-   - Solution: Ensure `eng.traineddata` is in the project root
-   - Check Tesseract.js installation
+- Ensure microphone permissions are granted
+- For mobile devices, use HTTPS (generate certificates)
+- Check that Python service is running on port 8000
+- Verify FFmpeg is installed: `ffmpeg -version`
 
-3. **Clipboard monitoring not working**
-   - Solution: Grant clipboard permissions in system settings
-   - On macOS: System Preferences → Security & Privacy → Privacy → Accessibility
+### AI Providers Failing
 
-4. **Screenshots not being detected**
-   - Solution: Verify `SCREENSHOTS_PATH` is correct
-   - Ensure directory exists and is writable
-   - Check file permissions
+- Verify API keys are correct in configuration
+- Check API key quotas/limits
+- Review error logs for specific error messages
+- The system will automatically fallback to next provider
 
-5. **Email not sending**
-   - Solution: Verify Gmail App Password is correct
-   - Check `EMAIL_USER` and `EMAIL_PASS` in `.env`
-   - Ensure 2-Step Verification is enabled
+### HTTPS Certificate Issues on iPhone
 
-6. **Port already in use**
-   - Solution: Change `PORT` in `.env` or kill the process using the port
+1. Generate certificates: `node generate-cert.js`
+2. Access via HTTPS: `https://YOUR_IP:8443`
+3. Tap "Show Details" → "Visit Website" when security warning appears
+4. If page keeps reloading, clear Safari cache
 
-### Debug Mode
+## 📝 API Endpoints
 
-Enable verbose logging by checking console output. The application logs:
-- AI provider attempts and results
-- Clipboard changes
-- Screenshot detections
-- Processing errors
+### Image Processing
 
-## 🔐 Security Notes
+- `POST /api/image/upload` - Upload and process image
+- `GET /api/data` - Get all processed data
 
-- **API Keys**: Never commit API keys to version control
-- **Email Passwords**: Use App Passwords, not regular passwords
-- **HTTPS**: For production, use proper SSL certificates (not self-signed)
-- **File Uploads**: Uploaded files are stored in `uploads/` directory
+### Clipboard
 
-## 📝 Scripts
+- `POST /api/clipboard/process` - Process clipboard content
 
-- `npm start` - Start backend server
-- `npm run dev` - Start backend with nodemon (auto-reload)
-- `npm run dev:frontend` - Start frontend dev server
-- `npm run build` - Build frontend for production
-- `npm run install:all` - Install all dependencies
-- `npm run start:all` - Start both backend and frontend in dev mode
+### Transcription
 
-## 🤝 Contributing
+- `POST /api/transcribe/upload` - Upload audio file for transcription
+- `POST /api/transcription/process` - Process transcription with AI
+- `GET /api/transcription/:sessionId` - Get transcription for session
+- `GET /api/transcription/latest/session` - Get latest active session
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+### Configuration
+
+- `GET /api/config/keys` - Get API keys configuration
+- `POST /api/config/keys` - Save API keys configuration
+- `GET /api/config/email` - Get email configuration
+- `POST /api/config/email` - Save email configuration
+- `GET /api/context` - Get context mode state
+- `POST /api/context` - Update context mode state
+
+## 🚀 Development
+
+### Building Frontend
+
+```bash
+npm run build
+```
+
+### Running in Development Mode
+
+```bash
+# Backend with auto-reload
+npm run dev
+
+# Frontend with hot-reload
+npm run dev:frontend
+
+# Python service
+npm run dev:python
+```
 
 ## 📄 License
 
-ISC License
+ISC
 
 ## 👤 Author
 
-**Parmeet Singh**
-
-## 🙏 Acknowledgments
-
-- Tesseract.js for OCR capabilities
-- OpenAI, Groq, and Google for AI APIs
-- React and Vite communities
-
----
-
-**Note**: This application requires at least one AI provider API key to function. Configure API keys via the web interface after starting the application.
-
+Parmeet Singh

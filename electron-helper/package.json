@@ -1,0 +1,13 @@
+{
+  "name": "electron-helper",
+  "version": "1.0.0",
+  "description": "Global keyboard shortcut helper for audio processing",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "dependencies": {
+    "axios": "^1.6.2",
+    "electron": "^35.1.4"
+  }
+}
