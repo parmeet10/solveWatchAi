@@ -51,12 +51,13 @@ class ImageProcessingService {
 
   addProcessedData(data) {
     this.processedData.push(data);
-    // Notify WebSocket clients about the new data
-    this.dataHandlers.forEach((handler) => {
-      if (handler) {
-        handler.notifyDataChanged(data);
-      }
-    });
+    // COMMENTED OUT: Frontend removed - no longer needed
+    // // Notify WebSocket clients about the new data
+    // this.dataHandlers.forEach((handler) => {
+    //   if (handler) {
+    //     handler.notifyDataChanged(data);
+    //   }
+    // });
   }
 
   async processImage(imagePath, filename, useContext = false) {
@@ -73,30 +74,32 @@ class ImageProcessingService {
         useContext,
       });
 
-      // Emit screenshot captured event (if not already emitted by monitor)
-      this.dataHandlers.forEach((handler) => {
-        if (handler && handler.emitScreenshotCaptured) {
-          handler.emitScreenshotCaptured(filename, imagePath);
-        }
-      });
+      // COMMENTED OUT: Frontend removed - no longer needed
+      // // Emit screenshot captured event (if not already emitted by monitor)
+      // this.dataHandlers.forEach((handler) => {
+      //   if (handler && handler.emitScreenshotCaptured) {
+      //     handler.emitScreenshotCaptured(filename, imagePath);
+      //   }
+      // });
 
-      // Emit OCR started event
-      this.dataHandlers.forEach((handler) => {
-        if (handler && handler.emitOCRStarted) {
-          handler.emitOCRStarted(filename, imagePath);
-        }
-      });
+      // // Emit OCR started event
+      // this.dataHandlers.forEach((handler) => {
+      //   if (handler && handler.emitOCRStarted) {
+      //     handler.emitOCRStarted(filename, imagePath);
+      //   }
+      // });
 
       const ocrStartTime = Date.now();
       const extractedText = await ocrService.extractText(imagePath);
       const ocrDuration = Date.now() - ocrStartTime;
 
-      // Emit OCR complete event
-      this.dataHandlers.forEach((handler) => {
-        if (handler && handler.emitOCRComplete) {
-          handler.emitOCRComplete(filename, extractedText, ocrDuration);
-        }
-      });
+      // COMMENTED OUT: Frontend removed - no longer needed
+      // // Emit OCR complete event
+      // this.dataHandlers.forEach((handler) => {
+      //   if (handler && handler.emitOCRComplete) {
+      //     handler.emitOCRComplete(filename, extractedText, ocrDuration);
+      //   }
+      // });
 
       log.info('OCR completed, starting AI processing', {
         processId,
@@ -105,13 +108,14 @@ class ImageProcessingService {
         ocrDuration: `${ocrDuration}ms`,
       });
 
-      // Emit AI started event
+      // COMMENTED OUT: Frontend removed - no longer needed
+      // // Emit AI started event
       const actuallyUsedContext = useContext && this.lastResponse !== null;
-      this.dataHandlers.forEach((handler) => {
-        if (handler && handler.emitAIStarted) {
-          handler.emitAIStarted(filename, extractedText, actuallyUsedContext);
-        }
-      });
+      // this.dataHandlers.forEach((handler) => {
+      //   if (handler && handler.emitAIStarted) {
+      //     handler.emitAIStarted(filename, extractedText, actuallyUsedContext);
+      //   }
+      // });
 
       const aiStartTime = Date.now();
       let gptResponse;
@@ -133,18 +137,19 @@ class ImageProcessingService {
       const aiDuration = Date.now() - aiStartTime;
       const provider = gptResponse.provider || 'unknown';
 
-      // Emit AI complete event
-      this.dataHandlers.forEach((handler) => {
-        if (handler && handler.emitAIComplete) {
-          handler.emitAIComplete(
-            filename,
-            gptResponse.message.content,
-            provider,
-            aiDuration,
-            actuallyUsedContext,
-          );
-        }
-      });
+      // COMMENTED OUT: Frontend removed - no longer needed
+      // // Emit AI complete event
+      // this.dataHandlers.forEach((handler) => {
+      //   if (handler && handler.emitAIComplete) {
+      //     handler.emitAIComplete(
+      //       filename,
+      //       gptResponse.message.content,
+      //       provider,
+      //       aiDuration,
+      //       actuallyUsedContext,
+      //     );
+      //   }
+      // });
 
       this.lastResponse = gptResponse.message.content;
 
@@ -173,12 +178,13 @@ class ImageProcessingService {
 
       this.processedData.push(processedItem);
 
-      // Notify WebSocket clients about the new data
-      this.dataHandlers.forEach((handler) => {
-        if (handler) {
-          handler.notifyDataChanged(processedItem);
-        }
-      });
+      // COMMENTED OUT: Frontend removed - no longer needed
+      // // Notify WebSocket clients about the new data
+      // this.dataHandlers.forEach((handler) => {
+      //   if (handler) {
+      //     handler.notifyDataChanged(processedItem);
+      //   }
+      // });
 
       // Send email if enabled
       try {
@@ -223,12 +229,13 @@ class ImageProcessingService {
         failedStage = 'ai';
       }
 
-      // Emit processing error event
-      this.dataHandlers.forEach((handler) => {
-        if (handler && handler.emitProcessingError) {
-          handler.emitProcessingError(filename, failedStage, err);
-        }
-      });
+      // COMMENTED OUT: Frontend removed - no longer needed
+      // // Emit processing error event
+      // this.dataHandlers.forEach((handler) => {
+      //   if (handler && handler.emitProcessingError) {
+      //     handler.emitProcessingError(filename, failedStage, err);
+      //   }
+      // });
 
       const errorItem = {
         filename: filename,
@@ -240,12 +247,13 @@ class ImageProcessingService {
       };
       this.processedData.push(errorItem);
 
-      // Notify WebSocket clients about the error data
-      this.dataHandlers.forEach((handler) => {
-        if (handler) {
-          handler.notifyDataChanged(errorItem);
-        }
-      });
+      // COMMENTED OUT: Frontend removed - no longer needed
+      // // Notify WebSocket clients about the error data
+      // this.dataHandlers.forEach((handler) => {
+      //   if (handler) {
+      //     handler.notifyDataChanged(errorItem);
+      //   }
+      // });
 
       throw err;
     }

@@ -10,7 +10,7 @@ export const CONFIG = {
   MAX_FILE_SIZE: 10 * 1024 * 1024, // 10MB
   ALLOWED_IMAGE_TYPES: /jpeg|jpg|png|gif|bmp|webp/,
   BLACKLISTED_FILES: ['.DS_Store'],
-  REFRESH_INTERVAL: 2000, // 2 seconds for frontend refresh
+  REFRESH_INTERVAL: 2000, // COMMENTED OUT: Frontend removed - 2 seconds for frontend refresh (no longer used)
 };
 
 export const getLocalIP = () => {

@@ -29,8 +29,9 @@ app.use('/api', contextRoutes);
 app.use('/api', configRoutes);
 app.use('/api/question', questionRoutes);
 
-// Frontend is served by Vite dev server at https://192.168.178.46:3000
-// Backend only serves API endpoints and WebSocket connections
+// COMMENTED OUT: Frontend removed
+// // Frontend is served by Vite dev server at https://192.168.178.46:3000
+// // Backend only serves API endpoints and WebSocket connections
 
 // Error handling middleware (must be last)
 app.use(notFoundHandler);
