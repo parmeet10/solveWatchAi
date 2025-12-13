@@ -3,8 +3,7 @@ import { Server } from 'socket.io';
 import app from './app.js';
 import screenshotMonitorService from './services/screenshot-monitor.service.js';
 import TextStreamHandler from './sockets/textStreamHandler.js';
-// COMMENTED OUT: Frontend removed - no longer needed
-// import DataHandler from './sockets/dataHandler.js';
+import DataHandler from './sockets/dataHandler.js';
 import imageProcessingService from './services/image-processing.service.js';
 import { CONFIG, getLocalIP } from './config/constants.js';
 import logger from './utils/logger.js';
@@ -35,9 +34,8 @@ const io = new Server(httpServer, {
 
 // Setup WebSocket handlers
 new TextStreamHandler(io);
-// COMMENTED OUT: Frontend removed - no longer needed
-// const dataHandler = new DataHandler(io);
-// imageProcessingService.setDataHandlers([dataHandler]);
+const dataHandler = new DataHandler(io);
+imageProcessingService.setDataHandlers([dataHandler]);
 
 httpServer.listen(CONFIG.PORT, '0.0.0.0', () => {
   const localIP = getLocalIP();
@@ -48,8 +46,9 @@ httpServer.listen(CONFIG.PORT, '0.0.0.0', () => {
   log.info(
     `WebSocket: ws://localhost:${CONFIG.PORT}/text-stream | ws://${localIP}:${CONFIG.PORT}/text-stream`,
   );
-  // COMMENTED OUT: Frontend removed
-  // log.info(`Frontend: http://localhost:3000 | http://${localIP}:3000`);
+  log.info(
+    `Data Updates: ws://localhost:${CONFIG.PORT}/data-updates | ws://${localIP}:${CONFIG.PORT}/data-updates`,
+  );
 });
 
 // Graceful shutdown handlers
