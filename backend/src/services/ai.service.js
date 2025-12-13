@@ -173,7 +173,7 @@ class AIService {
 
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({
-      model: options.model || 'gemini-pro',
+      model: options.model || 'gemini-2.5-flash',
     });
 
     // Convert messages format for Gemini

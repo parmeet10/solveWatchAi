@@ -126,7 +126,11 @@ class DataHandler extends EventEmitter {
       message: `Screenshot captured: ${filename}`,
     };
 
-    log.info('Screenshot captured event', eventData);
+    log.info('📸 Screenshot captured', {
+      filename,
+      filePath,
+      timestamp: new Date().toISOString(),
+    });
     namespace.emit('screenshot_captured', eventData);
   }
 
@@ -145,7 +149,11 @@ class DataHandler extends EventEmitter {
       message: `OCR processing started for: ${filename}`,
     };
 
-    log.info('OCR processing started', eventData);
+    log.info('🔍 OCR processing started', {
+      filename,
+      filePath,
+      timestamp: new Date().toISOString(),
+    });
     namespace.emit('ocr_started', eventData);
   }
 
@@ -168,10 +176,11 @@ class DataHandler extends EventEmitter {
       message: `OCR completed for: ${filename} (${extractedText.length} chars in ${duration}ms)`,
     };
 
-    log.info('OCR processing completed', {
+    log.info('✅ OCR processing completed', {
       filename,
       textLength: extractedText.length,
       duration: `${duration}ms`,
+      textPreview: extractedText.substring(0, 100),
     });
     namespace.emit('ocr_complete', eventData);
   }
@@ -189,46 +198,41 @@ class DataHandler extends EventEmitter {
       timestamp: Date.now(),
       status: 'processing',
       stage: 'ai',
-      message: `AI processing started for: ${filename}${useContext ? ' (with context)' : ''}`,
+      message: `AI processing started for: ${filename}${
+        useContext ? ' (with context)' : ''
+      }`,
     };
 
-    log.info('AI processing started', {
+    log.info('🤖 AI processing started', {
       filename,
       useContext,
       textLength: extractedText.length,
+      timestamp: new Date().toISOString(),
     });
     namespace.emit('ai_processing_started', eventData);
   }
 
   /**
    * Emit AI processing completed event
+   * Sends only the AI response to the client (as requested)
    */
   emitAIComplete(filename, response, provider, duration, useContext) {
     const namespace = this.io.of('/data-updates');
-    const eventData = {
-      filename,
-      response: response.substring(0, 500),
-      responseLength: response.length,
-      responsePreview: response.substring(0, 200),
-      provider,
-      useContext,
-      completedAt: new Date().toISOString(),
-      timestamp: Date.now(),
-      duration: duration,
-      durationMs: duration,
-      status: 'completed',
-      stage: 'ai',
-      message: `AI processing completed for: ${filename} (${response.length} chars, ${provider}, ${duration}ms)`,
-    };
 
+    // Log detailed information in terminal
     log.info('AI processing completed', {
       filename,
       responseLength: response.length,
       provider,
       duration: `${duration}ms`,
       useContext,
+      responsePreview: response.substring(0, 200),
     });
-    namespace.emit('ai_processing_complete', eventData);
+
+    // Emit only the response to client (simple format)
+    namespace.emit('ai_processing_complete', {
+      response: response,
+    });
   }
 
   /**
@@ -249,11 +253,12 @@ class DataHandler extends EventEmitter {
       message: `Error during ${stage} processing for: ${filename}`,
     };
 
-    log.error('Processing error', {
+    log.error('❌ Processing error', {
       filename,
       stage,
       error: error.message,
       stack: error.stack,
+      timestamp: new Date().toISOString(),
     });
     namespace.emit('processing_error', eventData);
   }

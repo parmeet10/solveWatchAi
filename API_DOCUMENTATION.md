@@ -843,14 +843,13 @@ socket.on('ai_processing_started', (data) => {
 
 **`ai_processing_complete`**
 
-Emitted when AI processing completes. Contains AI response details.
+Emitted when AI processing completes. Contains only the AI response (simplified format).
 
 ```javascript
 socket.on('ai_processing_complete', (data) => {
-  console.log('✅ AI complete:', data.filename);
-  console.log('Provider:', data.provider);
-  console.log('Duration:', data.durationMs, 'ms');
-  console.log('Response preview:', data.responsePreview);
+  console.log('✅ AI response received');
+  console.log('Response:', data.response);
+  // Use the response directly
 });
 ```
 
@@ -858,21 +857,11 @@ socket.on('ai_processing_complete', (data) => {
 
 ```json
 {
-  "filename": "screenshot_123.png",
-  "response": "This is a JavaScript function that returns the string 'hello'...",
-  "responseLength": 245,
-  "responsePreview": "This is a JavaScript function that returns the string 'hello'...",
-  "provider": "openai",
-  "useContext": false,
-  "completedAt": "2024-01-15T10:30:05.200Z",
-  "timestamp": 1705320005200,
-  "duration": 2600,
-  "durationMs": 2600,
-  "status": "completed",
-  "stage": "ai",
-  "message": "AI processing completed for: screenshot_123.png (245 chars, openai, 2600ms)"
+  "response": "This is a JavaScript function that returns the string 'hello'. It uses the function keyword to define a named function that can be called later. When invoked, it will return the string literal 'hello'."
 }
 ```
+
+**Note**: Detailed information (provider, duration, filename, etc.) is logged in the server terminal but not sent to the client. Only the AI response is emitted for simplicity.
 
 **`processing_error`**
 
@@ -1414,10 +1403,10 @@ socket.on('ai_processing_started', (data) => {
 });
 
 socket.on('ai_processing_complete', (data) => {
-  console.log('✅ AI complete:', data.filename);
-  console.log('Provider:', data.provider);
-  console.log('Duration:', data.durationMs, 'ms');
-  // Update UI: Show "Analysis complete"
+  console.log('✅ AI response received');
+  console.log('Response:', data.response);
+  // Update UI: Show AI response
+  displayAIResponse(data.response);
 });
 
 socket.on('processing_error', (data) => {
