@@ -53,21 +53,35 @@ class ScreenshotMonitorService {
       for (const shot of screenshots) {
         if (!this.blacklistedShots.includes(shot)) {
           this.blacklistedShots.push(shot);
+          const filePath = `${CONFIG.SCREENSHOTS_PATH}/${shot}`;
+
+          log.info('New screenshot detected', {
+            filename: shot,
+            filePath: filePath,
+          });
+
           try {
             const useContextEnabled =
               imageProcessingService.getUseContextEnabled();
             await imageProcessingService.processImage(
-              `${CONFIG.SCREENSHOTS_PATH}/${shot}`,
+              filePath,
               shot,
               useContextEnabled,
             );
           } catch (err) {
-            log.error('Error processing screenshot', err);
+            log.error('Error processing screenshot', {
+              filename: shot,
+              error: err.message,
+              stack: err.stack,
+            });
           }
         }
       }
     } catch (err) {
-      log.error('Error detecting screenshots', err);
+      log.error('Error detecting screenshots', {
+        error: err.message,
+        stack: err.stack,
+      });
     }
 
     setTimeout(() => this.detectNewScreenshots(), 1000);

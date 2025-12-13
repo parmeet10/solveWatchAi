@@ -111,6 +111,152 @@ class DataHandler extends EventEmitter {
     });
     this.emit('data_changed', newItem);
   }
+
+  /**
+   * Emit screenshot captured event
+   */
+  emitScreenshotCaptured(filename, filePath) {
+    const namespace = this.io.of('/data-updates');
+    const eventData = {
+      filename,
+      filePath,
+      capturedAt: new Date().toISOString(),
+      timestamp: Date.now(),
+      status: 'captured',
+      message: `Screenshot captured: ${filename}`,
+    };
+
+    log.info('Screenshot captured event', eventData);
+    namespace.emit('screenshot_captured', eventData);
+  }
+
+  /**
+   * Emit OCR processing started event
+   */
+  emitOCRStarted(filename, filePath) {
+    const namespace = this.io.of('/data-updates');
+    const eventData = {
+      filename,
+      filePath,
+      startedAt: new Date().toISOString(),
+      timestamp: Date.now(),
+      status: 'processing',
+      stage: 'ocr',
+      message: `OCR processing started for: ${filename}`,
+    };
+
+    log.info('OCR processing started', eventData);
+    namespace.emit('ocr_started', eventData);
+  }
+
+  /**
+   * Emit OCR processing completed event
+   */
+  emitOCRComplete(filename, extractedText, duration) {
+    const namespace = this.io.of('/data-updates');
+    const eventData = {
+      filename,
+      extractedText: extractedText.substring(0, 500),
+      extractedTextLength: extractedText.length,
+      textPreview: extractedText.substring(0, 200),
+      completedAt: new Date().toISOString(),
+      timestamp: Date.now(),
+      duration: duration,
+      durationMs: duration,
+      status: 'completed',
+      stage: 'ocr',
+      message: `OCR completed for: ${filename} (${extractedText.length} chars in ${duration}ms)`,
+    };
+
+    log.info('OCR processing completed', {
+      filename,
+      textLength: extractedText.length,
+      duration: `${duration}ms`,
+    });
+    namespace.emit('ocr_complete', eventData);
+  }
+
+  /**
+   * Emit AI processing started event
+   */
+  emitAIStarted(filename, extractedText, useContext) {
+    const namespace = this.io.of('/data-updates');
+    const eventData = {
+      filename,
+      extractedTextLength: extractedText.length,
+      useContext,
+      startedAt: new Date().toISOString(),
+      timestamp: Date.now(),
+      status: 'processing',
+      stage: 'ai',
+      message: `AI processing started for: ${filename}${useContext ? ' (with context)' : ''}`,
+    };
+
+    log.info('AI processing started', {
+      filename,
+      useContext,
+      textLength: extractedText.length,
+    });
+    namespace.emit('ai_processing_started', eventData);
+  }
+
+  /**
+   * Emit AI processing completed event
+   */
+  emitAIComplete(filename, response, provider, duration, useContext) {
+    const namespace = this.io.of('/data-updates');
+    const eventData = {
+      filename,
+      response: response.substring(0, 500),
+      responseLength: response.length,
+      responsePreview: response.substring(0, 200),
+      provider,
+      useContext,
+      completedAt: new Date().toISOString(),
+      timestamp: Date.now(),
+      duration: duration,
+      durationMs: duration,
+      status: 'completed',
+      stage: 'ai',
+      message: `AI processing completed for: ${filename} (${response.length} chars, ${provider}, ${duration}ms)`,
+    };
+
+    log.info('AI processing completed', {
+      filename,
+      responseLength: response.length,
+      provider,
+      duration: `${duration}ms`,
+      useContext,
+    });
+    namespace.emit('ai_processing_complete', eventData);
+  }
+
+  /**
+   * Emit processing error event
+   */
+  emitProcessingError(filename, stage, error) {
+    const namespace = this.io.of('/data-updates');
+    const eventData = {
+      filename,
+      stage,
+      error: {
+        message: error.message || 'Unknown error',
+        code: error.code || 'PROCESSING_ERROR',
+      },
+      occurredAt: new Date().toISOString(),
+      timestamp: Date.now(),
+      status: 'error',
+      message: `Error during ${stage} processing for: ${filename}`,
+    };
+
+    log.error('Processing error', {
+      filename,
+      stage,
+      error: error.message,
+      stack: error.stack,
+    });
+    namespace.emit('processing_error', eventData);
+  }
 }
 
 export default DataHandler;

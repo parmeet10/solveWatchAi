@@ -736,6 +736,172 @@ const socket = io('http://localhost:4000/data-updates', {
 
 ##### Server → Client
 
+**`screenshot_captured`**
+
+Emitted when a new screenshot is detected and captured.
+
+```javascript
+socket.on('screenshot_captured', (data) => {
+  console.log('📸 Screenshot captured:', data.filename);
+  console.log('Path:', data.filePath);
+});
+```
+
+**Payload**:
+
+```json
+{
+  "filename": "screenshot_123.png",
+  "filePath": "/path/to/screenshot_123.png",
+  "capturedAt": "2024-01-15T10:30:00.000Z",
+  "timestamp": 1705320000000,
+  "status": "captured",
+  "message": "Screenshot captured: screenshot_123.png"
+}
+```
+
+**`ocr_started`**
+
+Emitted when OCR processing begins for a screenshot.
+
+```javascript
+socket.on('ocr_started', (data) => {
+  console.log('🔍 OCR started for:', data.filename);
+});
+```
+
+**Payload**:
+
+```json
+{
+  "filename": "screenshot_123.png",
+  "filePath": "/path/to/screenshot_123.png",
+  "startedAt": "2024-01-15T10:30:01.000Z",
+  "timestamp": 1705320001000,
+  "status": "processing",
+  "stage": "ocr",
+  "message": "OCR processing started for: screenshot_123.png"
+}
+```
+
+**`ocr_complete`**
+
+Emitted when OCR processing completes. Contains extracted text details.
+
+```javascript
+socket.on('ocr_complete', (data) => {
+  console.log('✅ OCR complete:', data.filename);
+  console.log('Text length:', data.extractedTextLength);
+  console.log('Duration:', data.durationMs, 'ms');
+  console.log('Preview:', data.textPreview);
+});
+```
+
+**Payload**:
+
+```json
+{
+  "filename": "screenshot_123.png",
+  "extractedText": "function example() { return 'hello'; }",
+  "extractedTextLength": 38,
+  "textPreview": "function example() { return 'hello'; }",
+  "completedAt": "2024-01-15T10:30:02.500Z",
+  "timestamp": 1705320002500,
+  "duration": 1500,
+  "durationMs": 1500,
+  "status": "completed",
+  "stage": "ocr",
+  "message": "OCR completed for: screenshot_123.png (38 chars in 1500ms)"
+}
+```
+
+**`ai_processing_started`**
+
+Emitted when AI processing begins for extracted text.
+
+```javascript
+socket.on('ai_processing_started', (data) => {
+  console.log('🤖 AI processing started:', data.filename);
+  console.log('Using context:', data.useContext);
+});
+```
+
+**Payload**:
+
+```json
+{
+  "filename": "screenshot_123.png",
+  "extractedTextLength": 38,
+  "useContext": false,
+  "startedAt": "2024-01-15T10:30:02.600Z",
+  "timestamp": 1705320002600,
+  "status": "processing",
+  "stage": "ai",
+  "message": "AI processing started for: screenshot_123.png"
+}
+```
+
+**`ai_processing_complete`**
+
+Emitted when AI processing completes. Contains AI response details.
+
+```javascript
+socket.on('ai_processing_complete', (data) => {
+  console.log('✅ AI complete:', data.filename);
+  console.log('Provider:', data.provider);
+  console.log('Duration:', data.durationMs, 'ms');
+  console.log('Response preview:', data.responsePreview);
+});
+```
+
+**Payload**:
+
+```json
+{
+  "filename": "screenshot_123.png",
+  "response": "This is a JavaScript function that returns the string 'hello'...",
+  "responseLength": 245,
+  "responsePreview": "This is a JavaScript function that returns the string 'hello'...",
+  "provider": "openai",
+  "useContext": false,
+  "completedAt": "2024-01-15T10:30:05.200Z",
+  "timestamp": 1705320005200,
+  "duration": 2600,
+  "durationMs": 2600,
+  "status": "completed",
+  "stage": "ai",
+  "message": "AI processing completed for: screenshot_123.png (245 chars, openai, 2600ms)"
+}
+```
+
+**`processing_error`**
+
+Emitted when an error occurs during any processing stage.
+
+```javascript
+socket.on('processing_error', (data) => {
+  console.error('❌ Error during', data.stage, ':', data.filename);
+  console.error('Error:', data.error.message);
+});
+```
+
+**Payload**:
+
+```json
+{
+  "filename": "screenshot_123.png",
+  "stage": "ocr",
+  "error": {
+    "message": "Failed to extract text from image",
+    "code": "PROCESSING_ERROR"
+  },
+  "occurredAt": "2024-01-15T10:30:02.000Z",
+  "timestamp": 1705320002000,
+  "status": "error",
+  "message": "Error during ocr processing for: screenshot_123.png"
+}
+```
+
 **`data_update`**
 
 Emitted when processed data changes (new image processed, question answered, etc.).
@@ -1221,6 +1387,43 @@ socket.on('connection_status', (data) => {
   if (data.status === 'connected') {
     console.log('Initial data count:', data.dataCount);
   }
+});
+
+// Handle screenshot processing events
+socket.on('screenshot_captured', (data) => {
+  console.log('📸 Screenshot captured:', data.filename);
+  // Update UI: Show "Screenshot detected"
+});
+
+socket.on('ocr_started', (data) => {
+  console.log('🔍 OCR started:', data.filename);
+  // Update UI: Show "Extracting text..."
+});
+
+socket.on('ocr_complete', (data) => {
+  console.log('✅ OCR complete:', data.filename);
+  console.log('Text length:', data.extractedTextLength);
+  console.log('Duration:', data.durationMs, 'ms');
+  // Update UI: Show "Text extracted"
+});
+
+socket.on('ai_processing_started', (data) => {
+  console.log('🤖 AI processing started:', data.filename);
+  console.log('Using context:', data.useContext);
+  // Update UI: Show "Analyzing with AI..."
+});
+
+socket.on('ai_processing_complete', (data) => {
+  console.log('✅ AI complete:', data.filename);
+  console.log('Provider:', data.provider);
+  console.log('Duration:', data.durationMs, 'ms');
+  // Update UI: Show "Analysis complete"
+});
+
+socket.on('processing_error', (data) => {
+  console.error('❌ Error:', data.stage, '-', data.filename);
+  console.error('Error:', data.error.message);
+  // Update UI: Show error message
 });
 
 socket.on('data_update', (payload) => {
