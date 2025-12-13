@@ -35,18 +35,38 @@ class DataHandler extends EventEmitter {
         dataCount: initialData.length,
       });
 
-      socket.emit('data_update', {
+      const initialDataPayload = {
         type: 'initial',
         data: initialData,
         timestamp: Date.now(),
+      };
+
+      log.debug('📤 Emitting socket event: data_update (initial)', {
+        event: 'data_update',
+        payload: {
+          type: initialDataPayload.type,
+          dataCount: initialData.length,
+          timestamp: initialDataPayload.timestamp,
+        },
+        socketId: socket.id,
       });
 
-      socket.emit('connection_status', {
+      socket.emit('data_update', initialDataPayload);
+
+      const connectionStatusPayload = {
         status: 'connected',
         socketId: socket.id,
         dataCount: initialData.length,
         timestamp: Date.now(),
+      };
+
+      log.debug('📤 Emitting socket event: connection_status', {
+        event: 'connection_status',
+        payload: connectionStatusPayload,
+        socketId: socket.id,
       });
+
+      socket.emit('connection_status', connectionStatusPayload);
 
       // Handle disconnect
       socket.on('disconnect', (reason) => {
@@ -91,12 +111,26 @@ class DataHandler extends EventEmitter {
         connectedClients: namespace.sockets.size,
       });
 
-      namespace.emit('data_update', {
+      const updatePayload = {
         type: 'update',
         data: allData,
         newItem: data,
         timestamp: Date.now(),
+      };
+
+      log.debug('📤 Emitting socket event: data_update (update)', {
+        event: 'data_update',
+        payload: {
+          type: updatePayload.type,
+          dataCount: allData.length,
+          newItemType: data.type,
+          newItemFilename: data.filename,
+          timestamp: updatePayload.timestamp,
+        },
+        connectedClients: namespace.sockets.size,
       });
+
+      namespace.emit('data_update', updatePayload);
 
       log.debug('Data update broadcasted successfully', {
         connectedClients: namespace.sockets.size,
@@ -131,6 +165,13 @@ class DataHandler extends EventEmitter {
       filePath,
       timestamp: new Date().toISOString(),
     });
+
+    log.debug('📤 Emitting socket event: screenshot_captured', {
+      event: 'screenshot_captured',
+      payload: eventData,
+      connectedClients: namespace.sockets.size,
+    });
+
     namespace.emit('screenshot_captured', eventData);
   }
 
@@ -154,6 +195,13 @@ class DataHandler extends EventEmitter {
       filePath,
       timestamp: new Date().toISOString(),
     });
+
+    log.debug('📤 Emitting socket event: ocr_started', {
+      event: 'ocr_started',
+      payload: eventData,
+      connectedClients: namespace.sockets.size,
+    });
+
     namespace.emit('ocr_started', eventData);
   }
 
@@ -182,6 +230,13 @@ class DataHandler extends EventEmitter {
       duration: `${duration}ms`,
       textPreview: extractedText.substring(0, 100),
     });
+
+    log.debug('📤 Emitting socket event: ocr_complete', {
+      event: 'ocr_complete',
+      payload: eventData,
+      connectedClients: namespace.sockets.size,
+    });
+
     namespace.emit('ocr_complete', eventData);
   }
 
@@ -209,6 +264,13 @@ class DataHandler extends EventEmitter {
       textLength: extractedText.length,
       timestamp: new Date().toISOString(),
     });
+
+    log.debug('📤 Emitting socket event: ai_processing_started', {
+      event: 'ai_processing_started',
+      payload: eventData,
+      connectedClients: namespace.sockets.size,
+    });
+
     namespace.emit('ai_processing_started', eventData);
   }
 
@@ -218,6 +280,10 @@ class DataHandler extends EventEmitter {
    */
   emitAIComplete(filename, response, provider, duration, useContext) {
     const namespace = this.io.of('/data-updates');
+
+    const payload = {
+      response: response,
+    };
 
     // Log detailed information in terminal
     log.info('AI processing completed', {
@@ -229,10 +295,22 @@ class DataHandler extends EventEmitter {
       responsePreview: response.substring(0, 200),
     });
 
-    // Emit only the response to client (simple format)
-    namespace.emit('ai_processing_complete', {
-      response: response,
+    // Log the actual payload being sent to socket
+    log.debug('📤 Emitting socket event: ai_processing_complete', {
+      event: 'ai_processing_complete',
+      payload: {
+        responseLength: response.length,
+        responsePreview: response.substring(0, 300),
+        fullResponse: response, // Log full response for debugging
+      },
+      connectedClients: namespace.sockets.size,
+      filename,
+      provider,
+      duration: `${duration}ms`,
     });
+
+    // Emit only the response to client (simple format)
+    namespace.emit('ai_processing_complete', payload);
   }
 
   /**
@@ -260,7 +338,15 @@ class DataHandler extends EventEmitter {
       stack: error.stack,
       timestamp: new Date().toISOString(),
     });
-    namespace.emit('processing_error', eventData);
+
+    log.debug('📤 Emitting socket event: aiprocessing_error', {
+      event: 'aiprocessing_error',
+      payload: error.message,
+      eventData: eventData, // Log full event data for reference
+      connectedClients: namespace.sockets.size,
+    });
+
+    namespace.emit('aiprocessing_error', error.message);
   }
 }
 

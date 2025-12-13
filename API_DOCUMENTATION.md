@@ -861,35 +861,36 @@ socket.on('ai_processing_complete', (data) => {
 }
 ```
 
-**Note**: Detailed information (provider, duration, filename, etc.) is logged in the server terminal but not sent to the client. Only the AI response is emitted for simplicity.
+**Note**:
 
-**`processing_error`**
+- Only the AI response is emitted to the client for simplicity
+- Detailed information (provider, duration, filename, response length, etc.) is logged in the server terminal with debug-level logging
+- The full response is logged server-side for debugging purposes
 
-Emitted when an error occurs during any processing stage.
+**`aiprocessing_error`**
+
+Emitted when an error occurs during AI processing stage.
 
 ```javascript
-socket.on('processing_error', (data) => {
-  console.error('❌ Error during', data.stage, ':', data.filename);
-  console.error('Error:', data.error.message);
+socket.on('aiprocessing_error', (errorMessage) => {
+  console.error('❌ AI Processing error:', errorMessage);
+  // Note: Only the error message string is emitted, not a full object
 });
 ```
 
 **Payload**:
 
-```json
-{
-  "filename": "screenshot_123.png",
-  "stage": "ocr",
-  "error": {
-    "message": "Failed to extract text from image",
-    "code": "PROCESSING_ERROR"
-  },
-  "occurredAt": "2024-01-15T10:30:02.000Z",
-  "timestamp": 1705320002000,
-  "status": "error",
-  "message": "Error during ocr processing for: screenshot_123.png"
-}
+The event emits only the error message as a string:
+
 ```
+"Failed to process AI request: Connection timeout"
+```
+
+**Note**:
+
+- The event name is `aiprocessing_error` (not `processing_error`)
+- Only the error message string is sent to the client
+- Full error details (filename, stage, error object, timestamps) are logged server-side with error-level logging
 
 **`data_update`**
 
@@ -1409,10 +1410,10 @@ socket.on('ai_processing_complete', (data) => {
   displayAIResponse(data.response);
 });
 
-socket.on('processing_error', (data) => {
-  console.error('❌ Error:', data.stage, '-', data.filename);
-  console.error('Error:', data.error.message);
+socket.on('aiprocessing_error', (errorMessage) => {
+  console.error('❌ AI Processing error:', errorMessage);
   // Update UI: Show error message
+  // Note: Only the error message string is received, not a full object
 });
 
 socket.on('data_update', (payload) => {
@@ -1499,6 +1500,21 @@ The backend implements production-level logging for all socket operations and da
 - Data change events
 - Broadcast operations to connected clients
 - Initial data sent to new connections
+
+#### Socket Event Emissions
+
+- All socket events are logged at DEBUG level before emission
+- Logs include event name, payload preview, connected client count
+- AI response events log full response content for debugging
+- Payload structure and size are logged for all events:
+  - `screenshot_captured` - filename, filePath, timestamps
+  - `ocr_started` - filename, filePath, processing stage
+  - `ocr_complete` - filename, text length, duration, text preview
+  - `ai_processing_started` - filename, text length, context usage
+  - `ai_processing_complete` - response length, response preview, full response (server-side), provider, duration
+  - `aiprocessing_error` - error message, full error details (server-side)
+  - `data_update` - update type, data count, new item details
+  - `connection_status` - connection status, socket ID, data count
 
 ### Log Format
 
