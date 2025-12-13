@@ -4,16 +4,12 @@ import UploadSection from './components/UploadSection';
 import DataSection from './components/DataSection';
 import ApiKeyConfig from './components/ApiKeyConfig';
 import EmailConfig from './components/EmailConfig';
-import Transcriber from './components/Transcriber';
 import apiService from './services/api';
 import './App.css';
 
 function App() {
   const [processedData, setProcessedData] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [processingClipboard, setProcessingClipboard] = useState(false);
-  const [lastClipboardContent, setLastClipboardContent] = useState('');
-  const [autoClipboardEnabled, setAutoClipboardEnabled] = useState(true);
   const [showApiKeyConfig, setShowApiKeyConfig] = useState(false);
   const [apiKeysConfigured, setApiKeysConfigured] = useState(false);
   const [showEmailConfig, setShowEmailConfig] = useState(false);
@@ -52,7 +48,7 @@ function App() {
 
   const fetchData = useCallback(async () => {
     try {
-      const response = await fetch('/api/data');
+      const response = await fetch('http://localhost:4000/api/data');
       if (response.ok) {
         const data = await response.json();
         setProcessedData(data || []);
@@ -90,41 +86,6 @@ function App() {
     checkEmailConfig();
   }, [checkEmailConfig]);
 
-  const processClipboardContent = useCallback(
-    async (clipboardText) => {
-      try {
-        setProcessingClipboard(true);
-
-        if (!clipboardText || clipboardText.trim() === '') {
-          setProcessingClipboard(false);
-          return;
-        }
-
-        // Send to backend
-        await apiService.processClipboard(clipboardText);
-
-        // Data will be updated via WebSocket, no need to poll
-        setProcessingClipboard(false);
-      } catch (err) {
-        // Silently handle processing errors
-        setProcessingClipboard(false);
-      }
-    },
-    [fetchData],
-  );
-
-  const processClipboard = useCallback(async () => {
-    try {
-      // Read from clipboard
-      const clipboardText = await navigator.clipboard.readText();
-      await processClipboardContent(clipboardText);
-    } catch (err) {
-      alert(
-        'Failed to access clipboard. Please grant clipboard permissions or use the manual option.',
-      );
-    }
-  }, [processClipboardContent]);
-
   // WebSocket connection for real-time data updates
   useEffect(() => {
     // Check API keys configuration on startup
@@ -134,10 +95,10 @@ function App() {
     // Initial data fetch
     fetchData();
 
-    // Setup WebSocket connection for real-time updates
-    const socketUrl = window.location.origin;
+    // Setup WebSocket connection for real-time updates (direct to backend)
+    const backendUrl = 'http://localhost:4000';
 
-    socketRef.current = io(`${socketUrl}/data-updates`, {
+    socketRef.current = io(`${backendUrl}/data-updates`, {
       path: '/socket.io',
       transports: ['websocket', 'polling'],
       reconnection: true,
@@ -164,143 +125,6 @@ function App() {
       }
     };
   }, [checkApiKeysConfig, checkEmailConfig]);
-
-  // Monitor clipboard changes - check when window gains focus (user copied in another app)
-  // COMMENTED OUT: Clipboard monitoring feature disabled
-  // useEffect(() => {
-  //   if (!autoClipboardEnabled) return;
-
-  //   let isProcessing = false;
-
-  //   const checkClipboardOnFocus = async () => {
-  //     if (isProcessing) return;
-
-  //     try {
-  //       const clipboardText = await navigator.clipboard.readText();
-
-  //       // Only process if clipboard content changed and is not empty
-  //       if (
-  //         clipboardText &&
-  //         clipboardText.trim() !== '' &&
-  //         clipboardText !== lastClipboardContent
-  //       ) {
-  //         setLastClipboardContent(clipboardText);
-  //         isProcessing = true;
-  //         await processClipboardContent(clipboardText);
-  //         isProcessing = false;
-  //       }
-  //     } catch (err) {
-  //       // Clipboard access might be denied, ignore silently
-  //     }
-  //   };
-
-  //   // Check clipboard when window gains focus (user might have copied in another app)
-  //   window.addEventListener('focus', checkClipboardOnFocus);
-
-  //   return () => {
-  //     window.removeEventListener('focus', checkClipboardOnFocus);
-  //   };
-  // }, [autoClipboardEnabled, lastClipboardContent, processClipboardContent]);
-
-  // Check clipboard when user clicks anywhere (user interaction allows clipboard access)
-  // COMMENTED OUT: Clipboard monitoring feature disabled
-  // useEffect(() => {
-  //   if (!autoClipboardEnabled) return;
-
-  //   let isProcessing = false;
-  //   let clickTimeout;
-
-  //   const handleClick = async () => {
-  //     // Debounce - only check after a short delay
-  //     clearTimeout(clickTimeout);
-  //     clickTimeout = setTimeout(async () => {
-  //       if (isProcessing) return;
-
-  //       try {
-  //         const clipboardText = await navigator.clipboard.readText();
-
-  //         // Only process if clipboard content changed and is not empty
-  //         if (
-  //           clipboardText &&
-  //           clipboardText.trim() !== '' &&
-  //           clipboardText !== lastClipboardContent
-  //         ) {
-  //           setLastClipboardContent(clipboardText);
-  //           isProcessing = true;
-  //           await processClipboardContent(clipboardText);
-  //           isProcessing = false;
-  //         }
-  //       } catch (err) {
-  //         // Clipboard access might be denied, ignore silently
-  //       }
-  //     }, 300); // Small delay to ensure clipboard is updated after copy
-  //   };
-
-  //   // Listen for clicks anywhere on the page
-  //   document.addEventListener('click', handleClick, true);
-
-  //   return () => {
-  //     document.removeEventListener('click', handleClick, true);
-  //     clearTimeout(clickTimeout);
-  //   };
-  // }, [autoClipboardEnabled, lastClipboardContent, processClipboardContent]);
-
-  // Listen for paste events (Command+V) - when user pastes, we know they just copied
-  // COMMENTED OUT: Clipboard monitoring feature disabled
-  // useEffect(() => {
-  //   if (!autoClipboardEnabled) return;
-
-  //   const handlePaste = async (event) => {
-  //     // Don't prevent default - let paste happen normally
-  //     // But also process the clipboard content
-  //     try {
-  //       // Small delay to ensure clipboard is updated
-  //       setTimeout(async () => {
-  //         try {
-  //           const clipboardText = await navigator.clipboard.readText();
-  //           if (
-  //             clipboardText &&
-  //             clipboardText.trim() !== '' &&
-  //             clipboardText !== lastClipboardContent
-  //           ) {
-  //             setLastClipboardContent(clipboardText);
-  //             await processClipboardContent(clipboardText);
-  //           }
-  //         } catch (err) {
-  //           // Ignore clipboard errors
-  //         }
-  //       }, 100);
-  //     } catch (err) {
-  //       // Ignore errors
-  //     }
-  //   };
-
-  //   // Listen for paste events on the document
-  //   document.addEventListener('paste', handlePaste);
-
-  //   return () => {
-  //     document.removeEventListener('paste', handlePaste);
-  //   };
-  // }, [autoClipboardEnabled, lastClipboardContent, processClipboardContent]);
-
-  // Listen for keyboard shortcut to manually process clipboard
-  // Command+Shift+V (Mac) or Ctrl+Shift+V (Windows) - processes clipboard without pasting
-  // COMMENTED OUT: Clipboard monitoring feature disabled
-  // useEffect(() => {
-  //   const handleKeyDown = async (event) => {
-  //     // Check for Command+Shift+V (Mac) or Ctrl+Shift+V (Windows/Linux)
-  //     const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
-  //     const modifierKey = isMac ? event.metaKey : event.ctrlKey;
-
-  //     if (modifierKey && event.shiftKey && event.key === 'v') {
-  //       event.preventDefault();
-  //       await processClipboard();
-  //     }
-  //   };
-
-  //   window.addEventListener('keydown', handleKeyDown);
-  //   return () => window.removeEventListener('keydown', handleKeyDown);
-  // }, [processClipboard]);
 
   const handleUploadSuccess = () => {
     // Data will be updated via WebSocket automatically
@@ -358,68 +182,11 @@ function App() {
             {emailConfigured ? '📧 Email: Enabled' : '📧 Configure Email'}
           </button>
         </div>
-        {processingClipboard && (
-          <p style={{ color: '#4CAF50', fontSize: '14px', marginTop: '5px' }}>
-            🔄 Processing clipboard content...
-          </p>
-        )}
-        <div
-          style={{
-            fontSize: '12px',
-            color: '#666',
-            marginTop: '5px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '10px',
-            justifyContent: 'center',
-            flexWrap: 'wrap',
-          }}
-        >
-          <span style={{ color: '#333' }}>
-            💡 Auto-process:{' '}
-            <button
-              onClick={() => setAutoClipboardEnabled(!autoClipboardEnabled)}
-              style={{
-                padding: '2px 8px',
-                fontSize: '11px',
-                cursor: 'pointer',
-                backgroundColor: autoClipboardEnabled ? '#4CAF50' : '#ccc',
-                color: 'white',
-                border: 'none',
-                borderRadius: '3px',
-              }}
-            >
-              {autoClipboardEnabled ? 'ON' : 'OFF'}
-            </button>
-          </span>
-          <span>|</span>
-          <span style={{ fontSize: '11px', color: '#333', fontWeight: '500' }}>
-            📋 Copy text (Cmd+C), then click anywhere on this page or paste
-            (Cmd+V)
-          </span>
-          <span>|</span>
-          <button
-            onClick={processClipboard}
-            style={{
-              padding: '2px 8px',
-              fontSize: '11px',
-              cursor: 'pointer',
-              backgroundColor: '#2196F3',
-              color: 'white',
-              border: 'none',
-              borderRadius: '3px',
-            }}
-          >
-            Process Now
-          </button>
-        </div>
       </header>
 
       <UploadSection onUploadSuccess={handleUploadSuccess} />
 
       <DataSection data={processedData} loading={loading} />
-
-      <Transcriber />
     </div>
   );
 }

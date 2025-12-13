@@ -6,7 +6,7 @@
 import { app, BrowserWindow, globalShortcut, ipcMain } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { triggerTranscriptionProcessing } from './keyboardShortcut.service.js';
+import { triggerProcessing } from './keyboardShortcut.service.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -69,7 +69,7 @@ async function handleProcessing() {
 
   try {
     isProcessing = true;
-    await triggerTranscriptionProcessing();
+    await triggerProcessing(); // Tries questions first, then transcription
   } finally {
     isProcessing = false;
   }

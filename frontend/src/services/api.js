@@ -1,4 +1,4 @@
-const API_BASE_URL = '/api';
+const API_BASE_URL = 'http://localhost:4000/api';
 
 class ApiService {
   async uploadImage(formData) {
@@ -47,23 +47,6 @@ class ApiService {
     if (!response.ok) {
       const error = await response.json();
       throw new Error(error.error || 'Failed to update context state');
-    }
-
-    return response.json();
-  }
-
-  async processClipboard(content) {
-    const response = await fetch(`${API_BASE_URL}/clipboard`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ content }),
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Failed to process clipboard content');
     }
 
     return response.json();
@@ -123,33 +106,6 @@ class ApiService {
     return response.json();
   }
 
-  async processTranscription(sessionId, cutoffTimestamp = null) {
-    const response = await fetch(`${API_BASE_URL}/transcription/process`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ sessionId, cutoffTimestamp }),
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Failed to process transcription');
-    }
-
-    return response.json();
-  }
-
-  async getTranscription(sessionId) {
-    const response = await fetch(`${API_BASE_URL}/transcription/${sessionId}`);
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Failed to get transcription');
-    }
-
-    return response.json();
-  }
 }
 
 export default new ApiService();

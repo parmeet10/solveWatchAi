@@ -40,6 +40,53 @@ async function getLatestActiveSession() {
 }
 
 /**
+ * Trigger question processing for the latest active session
+ * @returns {Promise<{success: boolean, error?: string}>}
+ */
+async function triggerQuestionProcessing() {
+  try {
+    console.log('🔍 Looking for latest question session...');
+    const response = await axios.get(`${API_BASE}/question/latest-session`);
+
+    if (!response.data.success || !response.data.sessionId) {
+      console.log('⚠️  No active question session found');
+      return { success: false, error: 'No active question session found' };
+    }
+
+    const sessionId = response.data.sessionId;
+    console.log(`🚀 Processing question for session: ${sessionId}`);
+
+    const processResponse = await axios.post(`${API_BASE}/question/process`, {
+      sessionId,
+    });
+
+    if (processResponse.data.success) {
+      console.log('✅ Question processed successfully!');
+      console.log(
+        `📄 Response preview: ${processResponse.data.fullResponse?.substring(
+          0,
+          100,
+        )}...`,
+      );
+      return { success: true };
+    } else {
+      console.error(
+        '❌ Failed to process question:',
+        processResponse.data.error,
+      );
+      return { success: false, error: processResponse.data.error };
+    }
+  } catch (error) {
+    console.error('❌ Error processing question:', error.message);
+    if (error.response) {
+      console.error('Response status:', error.response.status);
+      console.error('Response data:', error.response.data);
+    }
+    return { success: false, error: error.message };
+  }
+}
+
+/**
  * Trigger transcription processing for the latest active session
  * @returns {Promise<{success: boolean, error?: string}>}
  */
@@ -83,7 +130,18 @@ async function triggerTranscriptionProcessing() {
   }
 }
 
+/**
+ * Trigger processing - processes questions from mobile text streams
+ * @returns {Promise<{success: boolean, error?: string}>}
+ */
+async function triggerProcessing() {
+  // Process questions from mobile text stream flow
+  return await triggerQuestionProcessing();
+}
+
 module.exports = {
   getLatestActiveSession,
+  triggerQuestionProcessing,
   triggerTranscriptionProcessing,
+  triggerProcessing,
 };

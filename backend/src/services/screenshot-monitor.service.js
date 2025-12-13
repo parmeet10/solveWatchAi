@@ -24,7 +24,7 @@ class ScreenshotMonitorService {
               fs.unlinkSync(filePath);
               clearedCount++;
             } catch (err) {
-              console.error(`Error deleting file ${file}:`, err);
+              log.error(`Error deleting file ${file}`, err);
             }
           }
         });

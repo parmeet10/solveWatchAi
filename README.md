@@ -83,12 +83,7 @@ Create a `.env` file in the root directory:
 ```env
 # Server Configuration
 PORT=4000
-HTTPS_PORT=8443
 SCREENSHOTS_PATH=/Users/your-username/Documents/screenshots
-
-# Python Service Configuration
-PYTHON_SERVICE_URL=http://localhost:8000
-PYTHON_SERVICE_WS_URL=ws://localhost:8000
 
 # Email Configuration (Optional)
 EMAIL_USER=your-email@gmail.com
@@ -99,19 +94,6 @@ EMAIL_FROM=your-email@gmail.com
 LOG_LEVEL=INFO  # Options: ERROR, WARN, INFO, DEBUG
 ```
 
-### 3. Generate SSL Certificates (Optional, for HTTPS)
-
-For mobile device access (iPhone/iPad), generate SSL certificates:
-
-```bash
-node generate-cert.js
-```
-
-Or use the shell script:
-
-```bash
-./generate-cert.sh
-```
 
 ## 🎯 Usage
 
@@ -151,9 +133,9 @@ npm run dev:frontend
 
 ### Accessing the Application
 
-- **Local**: http://localhost:4000
-- **Network**: http://YOUR_LOCAL_IP:4000
-- **HTTPS (if configured)**: https://localhost:8443 or https://YOUR_LOCAL_IP:8443
+- **Backend API**: http://localhost:4000
+- **Frontend**: http://localhost:3000
+- **Network**: http://YOUR_LOCAL_IP:4000 (backend) or http://YOUR_LOCAL_IP:3000 (frontend)
 
 ### Configuring API Keys
 
@@ -281,12 +263,6 @@ Set `LOG_LEVEL` in `.env`:
 - Try manual processing with `Cmd+Shift+V`
 - Check browser console for errors
 
-### Audio Transcription Not Working
-
-- Ensure microphone permissions are granted
-- For mobile devices, use HTTPS (generate certificates)
-- Check that Python service is running on port 8000
-- Verify FFmpeg is installed: `ffmpeg -version`
 
 ### AI Providers Failing
 
@@ -295,12 +271,6 @@ Set `LOG_LEVEL` in `.env`:
 - Review error logs for specific error messages
 - The system will automatically fallback to next provider
 
-### HTTPS Certificate Issues on iPhone
-
-1. Generate certificates: `node generate-cert.js`
-2. Access via HTTPS: `https://YOUR_IP:8443`
-3. Tap "Show Details" → "Visit Website" when security warning appears
-4. If page keeps reloading, clear Safari cache
 
 ## 📝 API Endpoints
 
