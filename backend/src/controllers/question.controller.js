@@ -55,14 +55,33 @@ class QuestionController {
         });
       }
 
-      log.info(`Processing question`, {
+      log.info('Processing question - Cmd+Shift+P triggered', {
         sessionId,
-        questionPreview: question.question.substring(0, 100),
+        question: question.question,
+        questionLength: question.question.length,
+        questionType: question.type,
+        confidence: question.confidence,
       });
 
       // Process question with AI
+      log.info('Sending question to AI service', {
+        sessionId,
+        question: question.question,
+        provider: 'fallback-enabled',
+      });
+
       const aiResponse = await aiService.askGptQuestion(question.question);
       const answer = aiResponse.message.content;
+      const provider = aiResponse.provider || 'unknown';
+
+      log.info('AI response received', {
+        sessionId,
+        question: question.question,
+        answer: answer,
+        answerLength: answer.length,
+        provider: provider,
+        answerPreview: answer.substring(0, 200),
+      });
 
       // Store the response for context mode (if enabled)
       imageProcessingService.setLastResponse(answer);
@@ -104,10 +123,18 @@ class QuestionController {
         // Don't throw - email failure shouldn't break the main flow
       }
 
-      log.info('Question processed successfully', {
+      log.info('Question processed successfully - Cmd+Shift+P completed', {
         sessionId,
+        question: question.question,
+        answer: answer,
         questionLength: question.question.length,
         answerLength: answer.length,
+        provider: provider,
+        processedEntry: {
+          filename: processedEntry.filename,
+          type: processedEntry.type,
+          timestamp: processedEntry.timestamp,
+        },
       });
 
       // Clear question storage for this session so next "Cmd+Shift+P" only processes new questions

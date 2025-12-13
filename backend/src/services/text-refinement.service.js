@@ -16,10 +16,22 @@ class TextRefinementService {
    */
   async refineTextChunk(rawText) {
     if (!rawText || rawText.trim().length === 0) {
+      log.warn('Empty text chunk received for refinement');
       return '';
     }
 
+    const refinementId = `refine-${Date.now()}-${Math.random()
+      .toString(36)
+      .substr(2, 9)}`;
+    const startTime = Date.now();
+
     try {
+      log.info('Starting text refinement', {
+        refinementId,
+        originalText: rawText,
+        originalLength: rawText.length,
+      });
+
       const prompt = `Correct and refine this speech-to-text output from Sherpa-ONNX model on a mobile device.
 
 Fix the following types of errors:
@@ -47,7 +59,15 @@ Text to correct: "${rawText}"`;
         },
       ];
 
-      log.debug('Refining text chunk', { originalLength: rawText.length });
+      log.info('Sending refinement request to AI', {
+        refinementId,
+        originalText: rawText,
+        promptLength: prompt.length,
+        messages: messages.map((m) => ({
+          role: m.role,
+          contentLength: m.content.length,
+        })),
+      });
 
       const response = await aiService.callAIWithFallback(messages, {
         temperature: 0.3, // Lower temperature for more consistent corrections
@@ -59,14 +79,31 @@ Text to correct: "${rawText}"`;
           ? response
           : response.message?.content || response;
 
-      log.debug('Text refined', {
+      const duration = Date.now() - startTime;
+      const provider = response.provider || 'unknown';
+
+      log.info('Text refinement completed - AI response received', {
+        refinementId,
+        originalText: rawText,
+        refinedText: refinedText,
         originalLength: rawText.length,
         refinedLength: refinedText.length,
+        provider: provider,
+        duration: `${duration}ms`,
+        changesDetected: rawText !== refinedText,
+        aiResponse: refinedText,
       });
 
       return refinedText.trim();
     } catch (error) {
-      log.error('Error refining text chunk', error);
+      const duration = Date.now() - startTime;
+      log.error('Error refining text chunk', {
+        refinementId,
+        originalText: rawText,
+        error: error.message,
+        stack: error.stack,
+        duration: `${duration}ms`,
+      });
       // Return original text if refinement fails
       return rawText;
     }

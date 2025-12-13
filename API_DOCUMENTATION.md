@@ -448,11 +448,13 @@ socket.emit('text_chunk', {
 
 **`session_started`**
 
-Emitted when client connects. Contains session ID.
+Emitted when client connects. Contains session ID and connection details.
 
 ```javascript
 socket.on('session_started', (data) => {
   console.log('Session ID:', data.sessionId);
+  console.log('Connected at:', data.connectedAt);
+  console.log('Message:', data.message);
 });
 ```
 
@@ -460,7 +462,204 @@ socket.on('session_started', (data) => {
 
 ```json
 {
-  "sessionId": "abc-123-def-456"
+  "sessionId": "abc-123-def-456",
+  "connectedAt": "2024-01-15T10:30:00.000Z",
+  "message": "Connected successfully. Ready to receive text chunks."
+}
+```
+
+**`connection_status`**
+
+Emitted when connection status changes (connected/disconnected).
+
+```javascript
+socket.on('connection_status', (data) => {
+  console.log('Status:', data.status);
+  console.log('Session ID:', data.sessionId);
+});
+```
+
+**Payload** (connected):
+
+```json
+{
+  "status": "connected",
+  "sessionId": "abc-123-def-456",
+  "timestamp": 1705320000000
+}
+```
+
+**Payload** (disconnected):
+
+```json
+{
+  "status": "disconnected",
+  "sessionId": "abc-123-def-456",
+  "reason": "client disconnect",
+  "timestamp": 1705320000000
+}
+```
+
+**`chunk_received`**
+
+Emitted immediately when a text chunk is received and acknowledged. Provides full details about the received chunk.
+
+```javascript
+socket.on('chunk_received', (data) => {
+  console.log('Chunk ID:', data.chunkId);
+  console.log('Text:', data.text);
+  console.log('Length:', data.textLength);
+  console.log('Status:', data.status);
+});
+```
+
+**Payload**:
+
+```json
+{
+  "chunkId": "chunk-123",
+  "sessionId": "abc-123-def-456",
+  "text": "wat is reakt hooks",
+  "textLength": 19,
+  "textPreview": "wat is reakt hooks",
+  "receivedAt": "2024-01-15T10:30:00.000Z",
+  "timestamp": 1705320000000,
+  "status": "received",
+  "message": "Text chunk received and queued for processing"
+}
+```
+
+**`text_chunk_status`**
+
+Emitted to notify client about text chunk processing stages.
+
+```javascript
+socket.on('text_chunk_status', (data) => {
+  console.log('Status:', data.status);
+  console.log('Stage:', data.stage);
+  console.log('Chunk ID:', data.chunkId);
+});
+```
+
+**Payload** (processing):
+
+```json
+{
+  "status": "processing",
+  "chunkId": "chunk-123",
+  "stage": "received|refining|extracting_questions|completed",
+  "timestamp": 1705320000000
+}
+```
+
+**Payload** (completed):
+
+```json
+{
+  "status": "completed",
+  "chunkId": "chunk-123",
+  "stage": "completed",
+  "questionsExtracted": 2,
+  "timestamp": 1705320000000
+}
+```
+
+**Payload** (error):
+
+```json
+{
+  "status": "error",
+  "chunkId": "chunk-123",
+  "error": "Error message",
+  "timestamp": 1705320000000
+}
+```
+
+**`chunk_processing_complete`**
+
+Emitted when text chunk processing is fully completed (success or error). Provides comprehensive summary of the entire processing pipeline.
+
+```javascript
+socket.on('chunk_processing_complete', (data) => {
+  console.log('Status:', data.status);
+  console.log('Duration:', data.durationMs, 'ms');
+  console.log('Questions extracted:', data.summary.questionsExtracted);
+  console.log('Message:', data.message);
+});
+```
+
+**Payload** (success):
+
+```json
+{
+  "chunkId": "chunk-123",
+  "sessionId": "abc-123-def-456",
+  "status": "completed",
+  "completedAt": "2024-01-15T10:30:05.000Z",
+  "duration": 5234,
+  "durationMs": 5234,
+  "summary": {
+    "originalText": "wat is reakt hooks",
+    "originalLength": 19,
+    "refinedText": "what is react hooks",
+    "refinedLength": 20,
+    "questionsExtracted": 1,
+    "questions": [
+      {
+        "question": "what is react hooks",
+        "type": "technical",
+        "confidence": 0.9
+      }
+    ],
+    "totalQuestionsInSession": 3
+  },
+  "stages": {
+    "received": true,
+    "refined": true,
+    "questionsExtracted": true,
+    "stored": true
+  },
+  "message": "Processing completed. 1 question(s) extracted and stored."
+}
+```
+
+**Payload** (error):
+
+```json
+{
+  "chunkId": "chunk-123",
+  "sessionId": "abc-123-def-456",
+  "status": "error",
+  "completedAt": "2024-01-15T10:30:02.000Z",
+  "duration": 1234,
+  "durationMs": 1234,
+  "error": {
+    "message": "AI service unavailable",
+    "code": "PROCESSING_ERROR"
+  },
+  "message": "Processing failed. Please try again."
+}
+```
+
+**`text_refined`**
+
+Emitted when text refinement is completed. Contains original and refined text.
+
+```javascript
+socket.on('text_refined', (data) => {
+  console.log('Original:', data.originalText);
+  console.log('Refined:', data.refinedText);
+});
+```
+
+**Payload**:
+
+```json
+{
+  "chunkId": "chunk-123",
+  "originalText": "wat is reakt hooks",
+  "refinedText": "what is react hooks",
+  "timestamp": 1705320000000
 }
 ```
 
@@ -471,7 +670,9 @@ Emitted when questions are extracted from text.
 ```javascript
 socket.on('questions_extracted', (data) => {
   console.log('Session:', data.sessionId);
+  console.log('Chunk ID:', data.chunkId);
   console.log('Questions:', data.questions);
+  console.log('Total in session:', data.totalQuestionsInSession);
 });
 ```
 
@@ -480,12 +681,16 @@ socket.on('questions_extracted', (data) => {
 ```json
 {
   "sessionId": "abc-123-def-456",
+  "chunkId": "chunk-123",
   "questions": [
     {
       "question": "what is react hooks",
-      "confidence": 0.9
+      "confidence": 0.9,
+      "type": "technical"
     }
-  ]
+  ],
+  "totalQuestionsInSession": 3,
+  "timestamp": 1705320000000
 }
 ```
 
@@ -496,6 +701,7 @@ Emitted on errors.
 ```javascript
 socket.on('error', (data) => {
   console.error('Error:', data.message);
+  console.error('Chunk ID:', data.chunkId);
 });
 ```
 
@@ -503,7 +709,9 @@ socket.on('error', (data) => {
 
 ```json
 {
-  "message": "Error description"
+  "message": "Error description",
+  "chunkId": "chunk-123",
+  "timestamp": 1705320000000
 }
 ```
 
@@ -537,6 +745,7 @@ socket.on('data_update', (payload) => {
   if (payload.type === 'initial') {
     // Initial data on connection
     console.log('All data:', payload.data);
+    console.log('Data count:', payload.data.length);
   } else if (payload.type === 'update') {
     // New item added
     console.log('New item:', payload.newItem);
@@ -559,7 +768,8 @@ socket.on('data_update', (payload) => {
       "usedContext": false,
       "type": "image"
     }
-  ]
+  ],
+  "timestamp": 1705320000000
 }
 ```
 
@@ -576,7 +786,42 @@ socket.on('data_update', (payload) => {
     "gptResponse": "...",
     "usedContext": false,
     "type": "question"
-  }
+  },
+  "timestamp": 1705320000000
+}
+```
+
+**`connection_status`**
+
+Emitted when connection status changes (connected/disconnected).
+
+```javascript
+socket.on('connection_status', (data) => {
+  console.log('Status:', data.status);
+  console.log('Socket ID:', data.socketId);
+  console.log('Data count:', data.dataCount);
+});
+```
+
+**Payload** (connected):
+
+```json
+{
+  "status": "connected",
+  "socketId": "socket-123",
+  "dataCount": 5,
+  "timestamp": 1705320000000
+}
+```
+
+**Payload** (disconnected):
+
+```json
+{
+  "status": "disconnected",
+  "socketId": "socket-123",
+  "reason": "client disconnect",
+  "timestamp": 1705320000000
 }
 ```
 
@@ -846,19 +1091,67 @@ let sessionId = null;
 socket.on('session_started', (data) => {
   sessionId = data.sessionId;
   console.log('Connected, session:', sessionId);
+  console.log('Connected at:', data.connectedAt);
+});
+
+// Handle connection status
+socket.on('connection_status', (data) => {
+  console.log('Connection status:', data.status);
+  if (data.status === 'disconnected') {
+    console.log('Disconnected reason:', data.reason);
+  }
+});
+
+// Handle chunk received acknowledgment
+socket.on('chunk_received', (data) => {
+  console.log('✅ Chunk received:', data.chunkId);
+  console.log('Text:', data.text);
+  console.log('Length:', data.textLength);
+});
+
+// Handle text chunk processing status
+socket.on('text_chunk_status', (data) => {
+  console.log(`Chunk ${data.chunkId}: ${data.status} - ${data.stage}`);
+  if (data.status === 'completed') {
+    console.log(`Questions extracted: ${data.questionsExtracted}`);
+  }
+});
+
+// Handle chunk processing completion
+socket.on('chunk_processing_complete', (data) => {
+  console.log('✅ Processing complete:', data.status);
+  console.log('Duration:', data.durationMs, 'ms');
+  if (data.status === 'completed') {
+    console.log('Questions:', data.summary.questionsExtracted);
+    console.log('Message:', data.message);
+  } else if (data.status === 'error') {
+    console.error('Error:', data.error.message);
+  }
+});
+
+// Handle text refinement
+socket.on('text_refined', (data) => {
+  console.log('Original:', data.originalText);
+  console.log('Refined:', data.refinedText);
 });
 
 // Handle extracted questions
 socket.on('questions_extracted', (data) => {
   console.log('Questions found:', data.questions);
+  console.log('Total questions in session:', data.totalQuestionsInSession);
   data.questions.forEach((q) => {
-    console.log(`- ${q.question} (confidence: ${q.confidence})`);
+    console.log(
+      `- ${q.question} (confidence: ${q.confidence}, type: ${q.type})`,
+    );
   });
 });
 
 // Handle errors
 socket.on('error', (data) => {
   console.error('Error:', data.message);
+  if (data.chunkId) {
+    console.error('Chunk ID:', data.chunkId);
+  }
 });
 
 // Send text chunk when speech recognition outputs text
@@ -922,12 +1215,22 @@ const socket = io('http://localhost:4000/data-updates', {
   transports: ['websocket', 'polling'],
 });
 
+// Handle connection status
+socket.on('connection_status', (data) => {
+  console.log('Connection status:', data.status);
+  if (data.status === 'connected') {
+    console.log('Initial data count:', data.dataCount);
+  }
+});
+
 socket.on('data_update', (payload) => {
   if (payload.type === 'initial') {
     // Load all data on connection
+    console.log('Received initial data:', payload.data.length, 'items');
     displayData(payload.data);
   } else if (payload.type === 'update') {
     // Add new item to UI
+    console.log('New item received:', payload.newItem);
     addDataItem(payload.newItem);
     updateDataList(payload.data);
   }
@@ -965,6 +1268,71 @@ API keys are stored in `backend/config/api-keys.json`:
 
 ---
 
+## Logging
+
+The backend implements production-level logging for all socket operations and data processing. All logs include structured data with timestamps, session IDs, and relevant context.
+
+### Log Levels
+
+- **ERROR**: Critical errors that need immediate attention
+- **WARN**: Warning messages for non-critical issues
+- **INFO**: Important operational information (connections, processing stages, completions)
+- **DEBUG**: Detailed debugging information
+
+### Logged Events
+
+#### Socket Connections
+
+- Client connections with session ID, socket ID, IP address, and timestamp
+- Client disconnections with reason and duration
+- Connection status changes
+
+#### Text Processing
+
+- Text chunk reception with length and preview
+- Text refinement requests sent to AI (original text, prompt details)
+- AI responses received (refined text, provider, duration)
+- Question extraction results
+- Question storage operations (questions stored, session details)
+
+#### Question Processing (Cmd+Shift+P)
+
+- Question processing initiation
+- Question sent to AI service
+- AI response received (answer, provider, length)
+- Processing completion with full question and answer
+
+#### Data Updates
+
+- Data change events
+- Broadcast operations to connected clients
+- Initial data sent to new connections
+
+### Log Format
+
+All logs follow this structure:
+
+```
+[timestamp] [LEVEL] [Module] message {structured_data}
+```
+
+Example:
+
+```
+[2024-01-15T10:30:00.000Z] [INFO] [TextStreamHandler] Client connected to text-stream {"sessionId":"abc-123","socketId":"socket-456","connectedAt":"2024-01-15T10:30:00.000Z","ip":"::1"}
+```
+
+### Viewing Logs
+
+Logs are output to the console. Set `LOG_LEVEL` environment variable to control verbosity:
+
+- `ERROR`: Only errors
+- `WARN`: Warnings and errors
+- `INFO`: Info, warnings, and errors (default)
+- `DEBUG`: All logs including debug messages
+
+---
+
 ## Notes
 
 - All timestamps are in ISO 8601 format or Unix milliseconds
@@ -973,6 +1341,8 @@ API keys are stored in `backend/config/api-keys.json`:
 - Supported image formats: JPEG, PNG, GIF, BMP, WEBP
 - WebSocket connections use Socket.io protocol
 - CORS is enabled for all origins
+- All socket events include timestamps for client-side tracking
+- Production-level logging is enabled for all operations
 
 ---
 

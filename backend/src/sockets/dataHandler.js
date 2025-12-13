@@ -20,22 +20,59 @@ class DataHandler extends EventEmitter {
     const namespace = this.io.of('/data-updates');
 
     namespace.on('connection', (socket) => {
-      log.info(`Client connected`, { socketId: socket.id });
+      const connectionInfo = {
+        socketId: socket.id,
+        connectedAt: new Date().toISOString(),
+        ip: socket.handshake.address,
+      };
+
+      log.info('Client connected to data-updates', connectionInfo);
 
       // Send initial data on connection
+      const initialData = imageProcessingService.getProcessedData();
+      log.info('Sending initial data to client', {
+        socketId: socket.id,
+        dataCount: initialData.length,
+      });
+
       socket.emit('data_update', {
         type: 'initial',
-        data: imageProcessingService.getProcessedData(),
+        data: initialData,
+        timestamp: Date.now(),
+      });
+
+      socket.emit('connection_status', {
+        status: 'connected',
+        socketId: socket.id,
+        dataCount: initialData.length,
+        timestamp: Date.now(),
       });
 
       // Handle disconnect
       socket.on('disconnect', (reason) => {
-        log.info(`Client disconnected`, { socketId: socket.id, reason });
+        const disconnectInfo = {
+          socketId: socket.id,
+          reason,
+          disconnectedAt: new Date().toISOString(),
+        };
+
+        log.info('Client disconnected from data-updates', disconnectInfo);
+
+        socket.emit('connection_status', {
+          status: 'disconnected',
+          socketId: socket.id,
+          reason,
+          timestamp: Date.now(),
+        });
       });
 
       // Handle errors
       socket.on('error', (error) => {
-        log.error(`Error for client ${socket.id}`, error);
+        log.error('Socket error', {
+          socketId: socket.id,
+          error: error.message || error,
+          stack: error.stack,
+        });
       });
     });
   }
@@ -45,16 +82,33 @@ class DataHandler extends EventEmitter {
     this.on('data_changed', (data) => {
       // Broadcast to all connected clients
       const namespace = this.io.of('/data-updates');
+      const allData = imageProcessingService.getProcessedData();
+
+      log.info('Broadcasting data update to all clients', {
+        newItemType: data.type,
+        newItemFilename: data.filename,
+        totalDataCount: allData.length,
+        connectedClients: namespace.sockets.size,
+      });
+
       namespace.emit('data_update', {
         type: 'update',
-        data: imageProcessingService.getProcessedData(),
+        data: allData,
         newItem: data,
+        timestamp: Date.now(),
       });
-      log.debug('Broadcasted data update to all clients');
+
+      log.debug('Data update broadcasted successfully', {
+        connectedClients: namespace.sockets.size,
+      });
     });
   }
 
   notifyDataChanged(newItem) {
+    log.info('Data changed event triggered', {
+      itemType: newItem.type,
+      itemFilename: newItem.filename,
+    });
     this.emit('data_changed', newItem);
   }
 }

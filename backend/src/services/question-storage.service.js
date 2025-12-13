@@ -1,6 +1,10 @@
 /**
  * Service for storing and managing extracted questions from text streams
  */
+import logger from '../utils/logger.js';
+
+const log = logger('QuestionStorageService');
+
 class QuestionStorageService {
   constructor() {
     // Map of sessionId -> { questions: [], createdAt: Date, lastUpdated: Date }
@@ -15,8 +19,14 @@ class QuestionStorageService {
    */
   addQuestions(sessionId, questions, timestamp = null) {
     if (!sessionId || !Array.isArray(questions) || questions.length === 0) {
+      log.warn('Invalid parameters for addQuestions', {
+        sessionId,
+        questionsCount: questions?.length || 0,
+      });
       return;
     }
+
+    const isNewSession = !this.sessions.has(sessionId);
 
     if (!this.sessions.has(sessionId)) {
       this.sessions.set(sessionId, {
@@ -24,22 +34,46 @@ class QuestionStorageService {
         createdAt: new Date(),
         lastUpdated: new Date(),
       });
+
+      log.info('New question session created', {
+        sessionId,
+        createdAt: new Date().toISOString(),
+      });
     }
 
     const session = this.sessions.get(sessionId);
     const questionTimestamp = timestamp ? new Date(timestamp) : new Date();
+    const questionsBefore = session.questions.length;
 
-    questions.forEach((q) => {
-      session.questions.push({
-        question: q.question,
-        type: q.type || 'technical',
-        confidence: q.confidence || 0.8,
-        timestamp: questionTimestamp,
-        extractedAt: new Date(),
-      });
+    const questionsToStore = questions.map((q) => ({
+      question: q.question,
+      type: q.type || 'technical',
+      confidence: q.confidence || 0.8,
+      timestamp: questionTimestamp,
+      extractedAt: new Date(),
+    }));
+
+    questionsToStore.forEach((q) => {
+      session.questions.push(q);
     });
 
     session.lastUpdated = new Date();
+
+    log.info('Questions stored in session', {
+      sessionId,
+      isNewSession,
+      questionsAdded: questions.length,
+      questionsBefore,
+      questionsAfter: session.questions.length,
+      storedQuestions: questionsToStore.map((q) => ({
+        question: q.question,
+        type: q.type,
+        confidence: q.confidence,
+        timestamp: q.timestamp.toISOString(),
+      })),
+      totalQuestionsInSession: session.questions.length,
+      lastUpdated: session.lastUpdated.toISOString(),
+    });
   }
 
   /**
