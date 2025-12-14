@@ -18,41 +18,21 @@ class DataHandler extends EventEmitter {
   setupNamespace() {
     this.namespace = this.io.of('/data-updates');
 
-    log.info('🔌 Setting up /data-updates namespace');
+    log.info('Setting up /data-updates namespace');
 
     this.namespace.on('connection', (socket) => {
-      const connectionInfo = {
-        socketId: socket.id,
-        connectedAt: new Date().toISOString(),
-        ip: socket.handshake.address,
-        userAgent: socket.handshake.headers['user-agent'],
-        totalConnections: this.namespace.sockets.size,
-      };
-
-      log.info('✅ [DATA-UPDATES] Client connected', connectionInfo);
+      log.info('Client connected');
 
       // Emit connected event
       socket.emit('connected', {
         socketId: socket.id,
-        connectedAt: connectionInfo.connectedAt,
+        connectedAt: new Date().toISOString(),
         timestamp: Date.now(),
-      });
-
-      log.debug('📤 [DATA-UPDATES] Emitted: connected', {
-        socketId: socket.id,
-        event: 'connected',
       });
 
       // Handle disconnect
       socket.on('disconnect', (reason) => {
-        const disconnectInfo = {
-          socketId: socket.id,
-          reason,
-          disconnectedAt: new Date().toISOString(),
-          remainingConnections: this.namespace.sockets.size - 1,
-        };
-
-        log.info('Client disconnected from data-updates', disconnectInfo);
+        log.info('Client disconnected');
 
         socket.emit('connection_status', {
           status: 'disconnected',
@@ -64,23 +44,19 @@ class DataHandler extends EventEmitter {
 
       // Handle errors
       socket.on('error', (error) => {
-        log.error('⚠️ [DATA-UPDATES] Socket error', {
-          socketId: socket.id,
-          error: error.message || error,
-          stack: error.stack,
-          timestamp: new Date().toISOString(),
-        });
+        const errorMessage = error.message || 'Unknown error';
+        log.error(`Socket error: ${errorMessage}`);
 
         // Emit error event to client
         socket.emit('error', {
           socketId: socket.id,
-          error: error.message || 'Unknown error',
+          error: errorMessage,
           timestamp: Date.now(),
         });
       });
     });
 
-    log.info('✅ [DATA-UPDATES] Namespace setup complete');
+    log.info('Namespace setup complete');
   }
 
   /**
@@ -88,32 +64,15 @@ class DataHandler extends EventEmitter {
    */
   emitScreenshotCaptured(filename, filePath) {
     if (!this.namespace) {
-      log.warn('⚠️ [DATA-UPDATES] Namespace not initialized, skipping emit');
+      log.warn('Namespace not initialized, skipping emit');
       return;
     }
+    
+    const message = `Screenshot captured: ${filename}`;
 
-    const eventData = {
-      filename,
-      filePath,
-      capturedAt: new Date().toISOString(),
-      timestamp: Date.now(),
-      status: 'captured',
-      message: `Screenshot captured: ${filename}`,
-    };
+    log.info(`Screenshot captured: ${filename}`);
 
-    log.info('📸 [DATA-UPDATES] Screenshot captured', {
-      filename,
-      filePath,
-      connectedClients: this.namespace.sockets.size,
-    });
-
-    this.namespace.emit('screenshot_captured', eventData);
-
-    log.debug('📤 [DATA-UPDATES] Emitted: screenshot_captured', {
-      event: 'screenshot_captured',
-      filename,
-      connectedClients: this.namespace.sockets.size,
-    });
+    this.namespace.emit('screenshot_captured', { message });
   }
 
   /**
@@ -121,33 +80,15 @@ class DataHandler extends EventEmitter {
    */
   emitOCRStarted(filename, filePath) {
     if (!this.namespace) {
-      log.warn('⚠️ [DATA-UPDATES] Namespace not initialized, skipping emit');
+      log.warn('Namespace not initialized, skipping emit');
       return;
     }
 
-    const eventData = {
-      filename,
-      filePath,
-      startedAt: new Date().toISOString(),
-      timestamp: Date.now(),
-      status: 'processing',
-      stage: 'ocr',
-      message: `OCR processing started for: ${filename}`,
-    };
+    const message = 'OCR started';
 
-    log.info('🔍 [DATA-UPDATES] OCR processing started', {
-      filename,
-      filePath,
-      connectedClients: this.namespace.sockets.size,
-    });
+    log.info('OCR started');
 
-    this.namespace.emit('ocr_started', eventData);
-
-    log.debug('📤 [DATA-UPDATES] Emitted: ocr_started', {
-      event: 'ocr_started',
-      filename,
-      connectedClients: this.namespace.sockets.size,
-    });
+    this.namespace.emit('ocr_started', { message });
   }
 
   /**
@@ -155,40 +96,15 @@ class DataHandler extends EventEmitter {
    */
   emitOCRComplete(filename, extractedText, duration) {
     if (!this.namespace) {
-      log.warn('⚠️ [DATA-UPDATES] Namespace not initialized, skipping emit');
+      log.warn('Namespace not initialized, skipping emit');
       return;
     }
 
-    const eventData = {
-      filename,
-      extractedText: extractedText.substring(0, 500),
-      extractedTextLength: extractedText.length,
-      textPreview: extractedText.substring(0, 200),
-      completedAt: new Date().toISOString(),
-      timestamp: Date.now(),
-      duration: duration,
-      durationMs: duration,
-      status: 'completed',
-      stage: 'ocr',
-      message: `OCR completed for: ${filename} (${extractedText.length} chars in ${duration}ms)`,
-    };
+    const message = 'OCR completed';
 
-    log.info('✅ [DATA-UPDATES] OCR processing completed', {
-      filename,
-      textLength: extractedText.length,
-      duration: `${duration}ms`,
-      connectedClients: this.namespace.sockets.size,
-    });
+    log.info(`OCR completed: ${extractedText}`);
 
-    this.namespace.emit('ocr_complete', eventData);
-
-    log.debug('📤 [DATA-UPDATES] Emitted: ocr_complete', {
-      event: 'ocr_complete',
-      filename,
-      textLength: extractedText.length,
-      duration: `${duration}ms`,
-      connectedClients: this.namespace.sockets.size,
-    });
+    this.namespace.emit('ocr_complete', { message });
   }
 
   /**
@@ -196,38 +112,15 @@ class DataHandler extends EventEmitter {
    */
   emitAIStarted(filename, extractedText, useContext) {
     if (!this.namespace) {
-      log.warn('⚠️ [DATA-UPDATES] Namespace not initialized, skipping emit');
+      log.warn('Namespace not initialized, skipping emit');
       return;
     }
 
-    const eventData = {
-      filename,
-      extractedTextLength: extractedText.length,
-      useContext,
-      startedAt: new Date().toISOString(),
-      timestamp: Date.now(),
-      status: 'processing',
-      stage: 'ai',
-      message: `AI processing started for: ${filename}${
-        useContext ? ' (with context)' : ''
-      }`,
-    };
+    const message = 'AI processing started';
 
-    log.info('🤖 [DATA-UPDATES] AI processing started', {
-      filename,
-      useContext,
-      textLength: extractedText.length,
-      connectedClients: this.namespace.sockets.size,
-    });
+    log.info('AI processing started');
 
-    this.namespace.emit('ai_processing_started', eventData);
-
-    log.debug('📤 [DATA-UPDATES] Emitted: ai_processing_started', {
-      event: 'ai_processing_started',
-      filename,
-      useContext,
-      connectedClients: this.namespace.sockets.size,
-    });
+    this.namespace.emit('ai_processing_started', { message });
   }
 
   /**
@@ -235,38 +128,17 @@ class DataHandler extends EventEmitter {
    */
   emitAIComplete(filename, response, provider, duration, useContext) {
     if (!this.namespace) {
-      log.warn('⚠️ [DATA-UPDATES] Namespace not initialized, skipping emit');
+      log.warn('Namespace not initialized, skipping emit');
       return;
     }
 
-    const payload = {
-      filename,
-      response: response,
-      provider,
-      duration,
-      useContext,
-      completedAt: new Date().toISOString(),
-      timestamp: Date.now(),
-    };
+    const message = 'AI processing completed';
 
-    log.info('✅ [DATA-UPDATES] AI processing completed', {
-      filename,
-      responseLength: response.length,
-      provider,
-      duration: `${duration}ms`,
-      useContext,
-      connectedClients: this.namespace.sockets.size,
-    });
+    log.info(`AI processing completed: ${response}`);
 
-    this.namespace.emit('ai_processing_complete', payload);
-
-    log.debug('📤 [DATA-UPDATES] Emitted: ai_processing_complete', {
-      event: 'ai_processing_complete',
-      filename,
-      provider,
-      responseLength: response.length,
-      duration: `${duration}ms`,
-      connectedClients: this.namespace.sockets.size,
+    this.namespace.emit('ai_processing_complete', {
+      response,
+      message,
     });
   }
 
@@ -275,38 +147,18 @@ class DataHandler extends EventEmitter {
    */
   emitProcessingError(filename, stage, error) {
     if (!this.namespace) {
-      log.warn('⚠️ [DATA-UPDATES] Namespace not initialized, skipping emit');
+      log.warn('Namespace not initialized, skipping emit');
       return;
     }
 
-    const eventData = {
-      filename,
-      stage,
-      error: {
-        message: error.message || 'Unknown error',
-        code: error.code || 'PROCESSING_ERROR',
-      },
-      occurredAt: new Date().toISOString(),
-      timestamp: Date.now(),
-      status: 'error',
-      message: `Error during ${stage} processing for: ${filename}`,
-    };
+    const errorMessage = error.message || 'Unknown error';
+    const message = `Error during ${stage} processing`;
 
-    log.error('❌ [DATA-UPDATES] Processing error', {
-      filename,
-      stage,
-      error: error.message,
-      connectedClients: this.namespace.sockets.size,
-    });
+    log.error(`Error during ${stage} processing: ${errorMessage}`);
 
-    this.namespace.emit('aiprocessing_error', eventData);
-
-    log.debug('📤 [DATA-UPDATES] Emitted: aiprocessing_error', {
-      event: 'aiprocessing_error',
-      filename,
-      stage,
-      error: error.message,
-      connectedClients: this.namespace.sockets.size,
+    this.namespace.emit('aiprocessing_error', {
+      error: errorMessage,
+      message,
     });
   }
 }

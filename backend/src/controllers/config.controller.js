@@ -10,12 +10,6 @@ const CONFIG_FILE_PATH = path.join(
   'config',
   'api-keys.json',
 );
-const EMAIL_CONFIG_FILE_PATH = path.join(
-  process.cwd(),
-  'backend',
-  'config',
-  'email-config.json',
-);
 
 class ConfigController {
   getConfigFilePath() {
@@ -25,15 +19,6 @@ class ConfigController {
       fs.mkdirSync(configDir, { recursive: true });
     }
     return CONFIG_FILE_PATH;
-  }
-
-  getEmailConfigFilePath() {
-    // Ensure config directory exists
-    const configDir = path.dirname(EMAIL_CONFIG_FILE_PATH);
-    if (!fs.existsSync(configDir)) {
-      fs.mkdirSync(configDir, { recursive: true });
-    }
-    return EMAIL_CONFIG_FILE_PATH;
   }
 
   getApiKeys(req, res) {
@@ -162,95 +147,6 @@ class ConfigController {
       res.status(500).json({
         success: false,
         error: 'Failed to save configuration',
-      });
-    }
-  }
-
-  getEmailConfig(req, res) {
-    try {
-      const configPath = this.getEmailConfigFilePath();
-
-      if (!fs.existsSync(configPath)) {
-        return res.json({
-          success: true,
-          config: {
-            enabled: false,
-            email: '',
-          },
-        });
-      }
-
-      const configData = fs.readFileSync(configPath, 'utf8');
-      const config = JSON.parse(configData);
-
-      res.json({
-        success: true,
-        config: {
-          enabled: config.enabled || false,
-          email: config.email || '',
-        },
-      });
-    } catch (err) {
-      log.error('Error reading email config', err);
-      res.status(500).json({
-        success: false,
-        error: 'Failed to read email configuration',
-      });
-    }
-  }
-
-  saveEmailConfig(req, res) {
-    try {
-      const { enabled, email } = req.body;
-
-      if (enabled === undefined) {
-        return res.status(400).json({
-          success: false,
-          error: 'Enabled status is required',
-        });
-      }
-
-      // If enabled, email must be provided and valid
-      if (enabled) {
-        if (!email || !email.trim()) {
-          return res.status(400).json({
-            success: false,
-            error: 'Email address is required when email is enabled',
-          });
-        }
-
-        // Basic email validation
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(email.trim())) {
-          return res.status(400).json({
-            success: false,
-            error: 'Invalid email address format',
-          });
-        }
-      }
-
-      const configPath = this.getEmailConfigFilePath();
-      const configToSave = {
-        enabled: enabled,
-        email: enabled ? email.trim() : '',
-      };
-
-      fs.writeFileSync(
-        configPath,
-        JSON.stringify(configToSave, null, 2),
-        'utf8',
-      );
-
-      res.json({
-        success: true,
-        message: 'Email configuration saved successfully',
-        config: configToSave,
-      });
-    } catch (err) {
-      log.error('Error saving email config', err);
-      res.status(500).json({
-        success: false,
-        error: 'Failed to save email configuration',
       });
     }
   }

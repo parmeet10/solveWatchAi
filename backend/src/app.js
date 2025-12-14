@@ -4,7 +4,6 @@ import dotenv from 'dotenv';
 import imageRoutes from './routes/image.routes.js';
 import contextRoutes from './routes/context.routes.js';
 import configRoutes from './routes/config.routes.js';
-import questionRoutes from './routes/question.routes.js';
 import {
   errorHandler,
   notFoundHandler,
@@ -27,7 +26,6 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/api', imageRoutes);
 app.use('/api', contextRoutes);
 app.use('/api', configRoutes);
-app.use('/api/question', questionRoutes);
 
 // COMMENTED OUT: Frontend removed
 // // Frontend is served by Vite dev server at https://192.168.178.46:3000

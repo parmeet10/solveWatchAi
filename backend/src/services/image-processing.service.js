@@ -1,21 +1,11 @@
 import ocrService from './ocr.service.js';
 import aiService from './ai.service.js';
-import emailService from './email.service.js';
 import dotenv from 'dotenv';
-import fs from 'fs';
-import path from 'path';
 import logger from '../utils/logger.js';
 
 dotenv.config();
 
 const log = logger('ImageProcessingService');
-
-const EMAIL_CONFIG_FILE_PATH = path.join(
-  process.cwd(),
-  'backend',
-  'config',
-  'email-config.json',
-);
 
 class ImageProcessingService {
   constructor() {
@@ -181,27 +171,6 @@ class ImageProcessingService {
       //     handler.notifyDataChanged(processedItem);
       //   }
       // });
-
-      // Send email if enabled
-      try {
-        let emailConfig = { enabled: false, email: '' };
-        if (fs.existsSync(EMAIL_CONFIG_FILE_PATH)) {
-          const configData = fs.readFileSync(EMAIL_CONFIG_FILE_PATH, 'utf8');
-          emailConfig = JSON.parse(configData);
-        }
-
-        if (emailConfig.enabled && emailConfig.email) {
-          await emailService.sendMail(
-            process.env.EMAIL_FROM || 'sparmeet162000@gmail.com',
-            emailConfig.email,
-            'CodeSnapGPT - Processed Screenshot',
-            gptResponse.message.content,
-          );
-        }
-      } catch (emailErr) {
-        log.error('Error sending email (non-fatal)', emailErr);
-        // Don't throw - email failure shouldn't break the main flow
-      }
 
       return {
         success: true,
