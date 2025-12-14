@@ -173,7 +173,7 @@ class AIService {
 
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({
-      model: options.model || 'gemini-pro',
+      model: options.model || 'gemini-2.5-flash',
     });
 
     // Convert messages format for Gemini
@@ -310,37 +310,6 @@ class AIService {
     }
   }
 
-  readClipboardPromptFromFile() {
-    try {
-      const promptPath = path.join(
-        process.cwd(),
-        'backend',
-        'prompts',
-        'clipboard-prompt.txt',
-      );
-      return fs.readFileSync(promptPath, 'utf8').trim();
-    } catch (err) {
-      log.warn('Could not read clipboard prompt file, using default prompt');
-      return 'Analyze this clipboard content and solve any questions or provide code output';
-    }
-  }
-
-  readAudioTranscriptionPromptFromFile() {
-    try {
-      const promptPath = path.join(
-        process.cwd(),
-        'backend',
-        'prompts',
-        'audio-transcription-prompt.txt',
-      );
-      return fs.readFileSync(promptPath, 'utf8').trim();
-    } catch (err) {
-      log.warn(
-        'Could not read audio transcription prompt file, using default prompt',
-      );
-      return 'Extract questions from this audio transcription and provide comprehensive answers. If no questions are found, provide a summary of the content.';
-    }
-  }
 
   async askGpt(text) {
     this.reloadConfig();
@@ -384,39 +353,34 @@ class AIService {
     });
   }
 
-  async askGptClipboard(clipboardContent) {
+
+  async askGptQuestion(question) {
     this.reloadConfig();
-    const systemPrompt = this.readClipboardPromptFromFile();
+
+    const prompt = `Answer this technical question clearly and comprehensively.
+
+If the question is about programming:
+- Provide code examples when relevant
+- Explain concepts clearly
+- Offer practical solutions
+- Include best practices when applicable
+
+If the question is about concepts or theory:
+- Explain with clarity and detail
+- Use examples to illustrate points
+- Break down complex topics
+
+Question: ${question}`;
 
     const messages = [
       {
         role: 'system',
-        content: systemPrompt,
+        content:
+          'You are a helpful technical assistant specializing in programming and software development. Provide clear, accurate, and practical answers to technical questions.',
       },
       {
         role: 'user',
-        content: `Clipboard content:\n${clipboardContent}`,
-      },
-    ];
-
-    return await this.callAIWithFallback(messages, {
-      temperature: 0.7,
-      max_tokens: 2048,
-    });
-  }
-
-  async askGptTranscription(transcriptionText) {
-    this.reloadConfig();
-    const systemPrompt = this.readAudioTranscriptionPromptFromFile();
-
-    const messages = [
-      {
-        role: 'system',
-        content: systemPrompt,
-      },
-      {
-        role: 'user',
-        content: `Audio transcription:\n${transcriptionText}`,
+        content: prompt,
       },
     ];
 

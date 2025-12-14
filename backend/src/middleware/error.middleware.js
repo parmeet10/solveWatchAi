@@ -23,11 +23,13 @@ export const errorHandler = (err, req, res, next) => {
 
 export const notFoundHandler = (req, res) => {
   // Backend only serves API endpoints and WebSocket connections
-  // Frontend is served by Vite dev server at https://192.168.178.46:3000
+  // COMMENTED OUT: Frontend removed
+  // // Frontend is served by Vite dev server at https://192.168.178.46:3000
   res.status(404).json({
     success: false,
     error: 'Route not found',
-    message:
-      'Backend only serves API endpoints. Access frontend at https://192.168.178.46:3000',
+    // COMMENTED OUT: Frontend removed
+    // message:
+    //   'Backend only serves API endpoints. Access frontend at https://192.168.178.46:3000',
   });
 };
