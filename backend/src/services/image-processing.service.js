@@ -71,6 +71,25 @@ class ImageProcessingService {
         }
       });
 
+      // Check for stored coordinates from capture events
+      // Get and clear coordinates immediately (before OCR) - single use only
+      let coordinates = null;
+      this.dataHandlers.forEach((handler) => {
+        if (handler && handler.getStoredCoordinates) {
+          coordinates = handler.getStoredCoordinates();
+          if (coordinates) {
+            // Clear coordinates immediately - next screenshot will use full OCR
+            handler.clearStoredCoordinates();
+            log.info('Using stored coordinates for OCR region extraction', {
+              x: coordinates.x,
+              y: coordinates.y,
+              width: coordinates.width,
+              height: coordinates.height,
+            });
+          }
+        }
+      });
+
       // Emit OCR started event
       this.dataHandlers.forEach((handler) => {
         if (handler && handler.emitOCRStarted) {
@@ -79,7 +98,11 @@ class ImageProcessingService {
       });
 
       const ocrStartTime = Date.now();
-      const extractedText = await ocrService.extractText(imagePath);
+      // Pass coordinates to OCR service if available (will crop image before OCR)
+      const extractedText = await ocrService.extractText(
+        imagePath,
+        coordinates,
+      );
       const ocrDuration = Date.now() - ocrStartTime;
 
       // Emit OCR complete event

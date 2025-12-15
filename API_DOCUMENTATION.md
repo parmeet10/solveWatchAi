@@ -376,6 +376,26 @@ Client reports an error (handled automatically by Socket.io).
 
 ---
 
+#### `capture`
+
+Trigger rectangle region capture for OCR. The server will monitor system mouse clicks to capture a rectangular region defined by two clicks (top-left and bottom-right corners). After two clicks are captured, a screenshot is automatically taken and processed with OCR on the specified region.
+
+**No payload required**
+
+**Behavior:**
+
+- Server starts monitoring system mouse clicks after receiving this event
+- First click defines the top-left corner of the rectangle
+- Second click defines the bottom-right corner of the rectangle
+- Coordinates are automatically normalized (handles clicks in any order)
+- Screenshot is taken automatically after both clicks are captured
+- Coordinates are stored and used for the next screenshot OCR processing
+- Coordinates are cleared after use (single-use only)
+
+**Note:** The mouse monitoring stream is automatically cleaned up after capture or on client disconnect.
+
+---
+
 ### Server Events (Events Client Receives)
 
 #### `connected`
@@ -564,11 +584,23 @@ Emitted when a socket error occurs.
 
 ### Image Processing Pipeline
 
+**Standard Flow:**
+
 1. **Screenshot Capture** → `screenshot_captured` event
 2. **OCR Processing Start** → `ocr_started` event
 3. **OCR Processing Complete** → `ocr_complete` event
 4. **AI Processing Start** → `ai_processing_started` event
 5. **AI Processing Complete** → `ai_processing_complete` event
+
+**With Region Capture:**
+
+1. **Client sends `capture` event** → Server monitors mouse clicks
+2. **Two clicks captured** → Rectangle coordinates stored
+3. **Screenshot automatically taken** → `screenshot_captured` event
+4. **OCR Processing Start** → `ocr_started` event (with region cropping)
+5. **OCR Processing Complete** → `ocr_complete` event
+6. **AI Processing Start** → `ai_processing_started` event
+7. **AI Processing Complete** → `ai_processing_complete` event
 
 If any error occurs:
 
@@ -578,6 +610,28 @@ If any error occurs:
 
 - When `useContextEnabled` is `true` and a previous AI response exists, the AI service uses the previous response as context for the next request.
 - Context usage is logged on the server but not included in WebSocket event payloads.
+
+---
+
+### Cropping on Scale
+
+When using the `capture` event to define a region for OCR, the system automatically handles coordinate scaling to account for display resolution differences.
+
+**How it works:**
+
+- Mouse clicks are captured in logical screen coordinates (e.g., 1440×900)
+- Screenshots may have different resolutions, especially on Retina/high-DPI displays (e.g., 2880×1800)
+- The system calculates a scale factor by comparing screenshot dimensions to screen dimensions
+- Coordinates are automatically scaled before cropping the image for OCR
+
+**Example:**
+
+- Screen resolution: 1440×900 (logical)
+- Screenshot resolution: 2880×1800 (2x Retina)
+- Scale factor: 2.0
+- Click at (500, 300) → Cropped at (1000, 600) in screenshot
+
+This ensures accurate region extraction regardless of display scaling or Retina display settings.
 
 ---
 
@@ -621,6 +675,9 @@ const socket = io('http://localhost:4000/data-updates', {
 socket.on('connected', (data) => {
   console.log('Connected:', data);
 });
+
+// Trigger region capture (monitor mouse clicks for rectangle)
+socket.emit('capture');
 
 // Processing events
 socket.on('screenshot_captured', (data) => {
@@ -704,8 +761,3 @@ curl http://localhost:4000/api/data
 - The WebSocket namespace uses WebSocket transport only (no polling).
 - Processing data is stored in memory and persists until server restart.
 - The server supports multiple AI providers with failover: OpenAI, Groq, and Google Gemini.
-
-
-
-
-reverse a string 
