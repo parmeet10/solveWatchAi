@@ -294,13 +294,13 @@ The transcription feature uses the same AI provider configuration as the image p
 
 - Supports multiple providers (OpenAI, Groq, Gemini)
 - Automatic fallback on provider failures
-- Provider selection configured in `backend/config/api-keys.json`
+- Provider selection configured in `config/api-keys.json`
 
 ### Prompt Configuration
 
 Transcription processing uses a specialized prompt located at:
 
-- `backend/prompts/transcription-prompt.txt`
+- `prompts/transcription-prompt.txt`
 
 The prompt is optimized for:
 
@@ -403,13 +403,13 @@ The prompt is optimized for:
 
 ### Implementation Files
 
-- **Socket Handler:** `backend/src/sockets/dataHandler.js`
+- **Socket Handler:** `src/sockets/dataHandler.js`
   - `transcriptionChunks` Map stores chunks per socket.id
   - Event handlers for `transcription` and `process_transcription`
-- **AI Service:** `backend/src/services/ai.service.js`
+- **AI Service:** `src/services/ai.service.js`
   - `askGptTranscription()` method processes transcription
   - `readTranscriptionPromptFromFile()` loads transcription prompt
-- **Prompt File:** `backend/prompts/transcription-prompt.txt`
+- **Prompt File:** `prompts/transcription-prompt.txt`
   - Specialized prompt for transcription processing
   - Handles both coding and theoretical questions
 

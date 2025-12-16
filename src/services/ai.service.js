@@ -12,7 +12,6 @@ const log = logger('AIService');
 
 const CONFIG_FILE_PATH = path.join(
   process.cwd(),
-  'backend',
   'config',
   'api-keys.json',
 );
@@ -279,7 +278,6 @@ class AIService {
     try {
       const promptPath = path.join(
         process.cwd(),
-        'backend',
         'prompts',
         'system-prompt.txt',
       );
@@ -294,7 +292,6 @@ class AIService {
     try {
       const promptPath = path.join(
         process.cwd(),
-        'backend',
         'prompts',
         'context-prompt.txt',
       );
@@ -314,7 +311,6 @@ class AIService {
     try {
       const promptPath = path.join(
         process.cwd(),
-        'backend',
         'prompts',
         'transcription-prompt.txt',
       );

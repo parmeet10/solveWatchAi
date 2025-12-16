@@ -144,10 +144,10 @@ recordings/
 *.m4a
 
 # API Keys configuration
-backend/config/api-keys.json
+config/api-keys.json
 
 # Email configuration
-backend/config/email-config.json
+config/email-config.json
 
 # Python virtual environment
 python-service/venv/

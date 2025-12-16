@@ -2,11 +2,11 @@
   "name": "solveWatchAi",
   "version": "2.0.0",
   "description": "AI-powered screenshot monitor that automatically processes screenshots, extracts text using OCR, and provides intelligent solutions using multiple AI providers (OpenAI, Groq, Gemini) with automatic fallback. Features context-aware processing.",
-  "main": "backend/src/server.js",
+  "main": "src/server.js",
   "type": "module",
   "scripts": {
-    "start": "node backend/src/server.js",
-    "dev": "nodemon backend/src/server.js",
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
     "dev:python": "echo '⚠️  Python service is optional (for legacy audio transcription). Skipping...' || cd python-service && if [ -d venv ]; then venv/bin/python app.py; else echo '⚠️  Python venv not found. Please run: cd python-service && python3 -m venv venv && source venv/bin/activate && pip install -r requirements.txt'; exit 1; fi",
     "install:python": "cd python-service && if [ ! -d venv ] || [ ! -f venv/bin/pip ] || ! venv/bin/pip --version &> /dev/null; then echo '📦 Creating Python virtual environment...' && rm -rf venv && if command -v python3.12 &> /dev/null; then python3.12 -m venv venv && echo '✅ Virtual environment created with Python 3.12'; elif command -v python3.11 &> /dev/null; then python3.11 -m venv venv && echo '✅ Virtual environment created with Python 3.11'; else python3 -m venv venv && echo '⚠️  Using Python 3.13 (some packages may have compatibility issues)'; fi; fi && if ! command -v ffmpeg &> /dev/null; then echo '⚠️  FFmpeg not found. Installing via Homebrew...' && brew install ffmpeg || echo '⚠️  Please install FFmpeg manually: brew install ffmpeg'; fi && echo '📦 Installing Python dependencies...' && venv/bin/pip install --upgrade pip setuptools wheel && venv/bin/pip install -r requirements.txt && echo '✅ Python dependencies installed!'",
     "test": "echo \"Error: no test specified\" && exit 1"

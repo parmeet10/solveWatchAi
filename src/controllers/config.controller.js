@@ -6,7 +6,6 @@ const log = logger('ConfigController');
 
 const CONFIG_FILE_PATH = path.join(
   process.cwd(),
-  'backend',
   'config',
   'api-keys.json',
 );
