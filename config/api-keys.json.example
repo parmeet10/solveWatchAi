@@ -1,0 +1,10 @@
+{
+  "keys": {
+    "openai": "your-openai-api-key-here",
+    "grok": "your-groq-api-key-here",
+    "gemini": "your-gemini-api-key-here"
+  },
+  "order": ["openai", "grok", "gemini"],
+  "enabled": ["openai", "grok", "gemini"]
+}
+
