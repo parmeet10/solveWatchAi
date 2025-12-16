@@ -9,6 +9,8 @@ import screenshot from 'screenshot-desktop';
 import path from 'path';
 import fs from 'fs';
 import { CONFIG } from '../config/constants.js';
+import aiService from '../services/ai.service.js';
+import imageProcessingService from '../services/image-processing.service.js';
 
 const log = logger('DataHandler');
 
@@ -18,6 +20,7 @@ class DataHandler extends EventEmitter {
     this.io = io;
     this.namespace = null;
     this.storedCoordinates = null; // Store rectangle coordinates from capture events
+    this.transcriptionChunks = new Map(); // Store transcription chunks per socket connection
     this.setupNamespace();
   }
 
@@ -39,6 +42,14 @@ class DataHandler extends EventEmitter {
       // Handle disconnect
       socket.on('disconnect', (reason) => {
         log.info('Client disconnected');
+
+        // Clean up transcription chunks for this connection
+        if (this.transcriptionChunks.has(socket.id)) {
+          this.transcriptionChunks.delete(socket.id);
+          log.info('Cleaned up transcription chunks for disconnected socket', {
+            socketId: socket.id,
+          });
+        }
 
         socket.emit('connection_status', {
           status: 'disconnected',
@@ -242,6 +253,125 @@ class DataHandler extends EventEmitter {
             error: `Failed to start mouse monitoring: ${error.message}`,
             timestamp: Date.now(),
           });
+        }
+      });
+
+      // Handle transcription event - accumulate text chunks
+      socket.on('transcription', async (data) => {
+        const { textChunk } = data || {};
+        console.log('data', data);
+        console.log('textChunk', textChunk);
+        if (!textChunk || typeof textChunk !== 'string') {
+          log.warn('Invalid transcription chunk received', {
+            socketId: socket.id,
+            data,
+          });
+          return;
+        }
+
+        // Initialize array if it doesn't exist for this socket
+        if (!this.transcriptionChunks.has(socket.id)) {
+          this.transcriptionChunks.set(socket.id, []);
+        }
+
+        // Add chunk to the array
+        const chunks = this.transcriptionChunks.get(socket.id);
+        chunks.push(textChunk);
+
+        log.debug('Transcription chunk received', {
+          socketId: socket.id,
+          chunkLength: textChunk.length,
+          totalChunks: chunks.length,
+        });
+      });
+
+      // Handle process_transcription event - process accumulated transcription
+      socket.on('process_transcription', async () => {
+        const chunks = this.transcriptionChunks.get(socket.id);
+
+        if (!chunks || chunks.length === 0) {
+          log.warn('No transcription chunks found for processing', {
+            socketId: socket.id,
+          });
+          socket.emit('aiprocessing_error', {
+            error: 'No transcription data available',
+            message: 'Error during transcription processing',
+          });
+          return;
+        }
+
+        try {
+          // Combine all chunks into full transcription
+          const fullTranscription = chunks.join(' ');
+
+          log.info('Processing transcription', {
+            socketId: socket.id,
+            chunkCount: chunks.length,
+            transcriptionLength: fullTranscription.length,
+          });
+
+          // Emit AI processing started event
+          this.emitAIStarted('transcription', fullTranscription, false);
+
+          const aiStartTime = Date.now();
+
+          // Call AI service to process transcription
+          const aiResponse = await aiService.askGptTranscription(
+            fullTranscription,
+          );
+
+          const aiDuration = Date.now() - aiStartTime;
+          const provider = aiResponse.provider || 'unknown';
+          const responseContent = aiResponse.message.content;
+
+          // Store the AI response in imageProcessingService
+          const processedItem = {
+            filename: 'transcription',
+            timestamp: new Date().toLocaleString(),
+            extractedText:
+              fullTranscription.substring(0, 500) +
+              (fullTranscription.length > 500 ? '...' : ''),
+            gptResponse:
+              responseContent.substring(0, 1000) +
+              (responseContent.length > 1000 ? '...' : ''),
+            usedContext: false,
+            type: 'transcription',
+          };
+          imageProcessingService.addProcessedData(processedItem);
+
+          // Update last response for potential context use
+          imageProcessingService.setLastResponse(responseContent);
+
+          // Clear transcription chunks after processing (don't store transcription)
+          this.transcriptionChunks.delete(socket.id);
+
+          log.info('Transcription processing completed successfully', {
+            socketId: socket.id,
+            provider,
+            aiDuration: `${aiDuration}ms`,
+            responseLength: responseContent.length,
+          });
+
+          // Emit AI processing complete event
+          this.emitAIComplete(
+            'transcription',
+            responseContent,
+            provider,
+            aiDuration,
+            false,
+          );
+        } catch (err) {
+          log.error('Error processing transcription', {
+            socketId: socket.id,
+            error: err.message,
+            stack: err.stack,
+          });
+
+          // Clear chunks even on error (don't store transcription)
+          this.transcriptionChunks.delete(socket.id);
+
+          // Emit processing error event
+          this.emitProcessingError('transcription', 'transcription', err);
         }
       });
     });

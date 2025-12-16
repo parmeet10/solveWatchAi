@@ -310,6 +310,22 @@ class AIService {
     }
   }
 
+  readTranscriptionPromptFromFile() {
+    try {
+      const promptPath = path.join(
+        process.cwd(),
+        'backend',
+        'prompts',
+        'transcription-prompt.txt',
+      );
+      return fs.readFileSync(promptPath, 'utf8').trim();
+    } catch (err) {
+      log.warn(
+        'Could not read transcription prompt file, using default prompt',
+      );
+      return 'Identify the coding interview question from this transcription and provide a complete solution.';
+    }
+  }
 
   async askGpt(text) {
     this.reloadConfig();
@@ -353,7 +369,6 @@ class AIService {
     });
   }
 
-
   async askGptQuestion(question) {
     this.reloadConfig();
 
@@ -381,6 +396,27 @@ Question: ${question}`;
       {
         role: 'user',
         content: prompt,
+      },
+    ];
+
+    return await this.callAIWithFallback(messages, {
+      temperature: 0.7,
+      max_tokens: 2048,
+    });
+  }
+
+  async askGptTranscription(transcriptionText) {
+    this.reloadConfig();
+    const systemPrompt = this.readTranscriptionPromptFromFile();
+
+    const messages = [
+      {
+        role: 'system',
+        content: systemPrompt,
+      },
+      {
+        role: 'user',
+        content: `Live transcription:\n${transcriptionText}`,
       },
     ];
 
