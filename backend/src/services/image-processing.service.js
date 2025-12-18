@@ -127,25 +127,6 @@ class ImageProcessingService {
         }
       });
 
-      // Get prompt type from handlers (check all handlers for prompt type)
-      let promptType = null;
-      this.dataHandlers.forEach((handler) => {
-        if (handler && handler.getAnyPromptType) {
-          const handlerPromptType = handler.getAnyPromptType();
-          if (handlerPromptType) {
-            promptType = handlerPromptType;
-          }
-        }
-      });
-
-      if (promptType) {
-        log.info('Using custom prompt type for AI processing', {
-          processId,
-          filename,
-          promptType,
-        });
-      }
-
       const aiStartTime = Date.now();
       let gptResponse;
 
@@ -154,15 +135,13 @@ class ImageProcessingService {
           processId,
           filename,
           contextLength: this.lastResponse.length,
-          promptType: promptType || 'default',
         });
         gptResponse = await aiService.askGptWithContext(
           extractedText,
           this.lastResponse,
-          promptType,
         );
       } else {
-        gptResponse = await aiService.askGpt(extractedText, promptType);
+        gptResponse = await aiService.askGpt(extractedText);
       }
 
       const aiDuration = Date.now() - aiStartTime;

@@ -21,6 +21,7 @@ class DataHandler extends EventEmitter {
     this.namespace = null;
     this.storedCoordinates = null; // Store rectangle coordinates from capture events
     this.transcriptionChunks = new Map(); // Store transcription chunks per socket connection
+    this.promptTypes = new Map(); // Store prompt type per socket connection (coding, theory, query, or null)
     this.setupNamespace();
   }
 
@@ -47,6 +48,14 @@ class DataHandler extends EventEmitter {
         if (this.transcriptionChunks.has(socket.id)) {
           this.transcriptionChunks.delete(socket.id);
           log.info('Cleaned up transcription chunks for disconnected socket', {
+            socketId: socket.id,
+          });
+        }
+
+        // Clean up prompt type for this connection
+        if (this.promptTypes.has(socket.id)) {
+          this.promptTypes.delete(socket.id);
+          log.info('Cleaned up prompt type for disconnected socket', {
             socketId: socket.id,
           });
         }
@@ -285,6 +294,47 @@ class DataHandler extends EventEmitter {
         });
       });
 
+      // Handle set_prompt_type event - set the prompt type for this socket
+      socket.on('set_prompt_type', (data) => {
+        const { promptType } = data || {};
+
+        // Validate prompt type
+        const validTypes = ['coding', 'theory', 'query', null, undefined, ''];
+        if (promptType && !validTypes.includes(promptType.toLowerCase())) {
+          log.warn('Invalid prompt type received', {
+            socketId: socket.id,
+            promptType,
+            validTypes: ['coding', 'theory', 'query', null],
+          });
+          socket.emit('error', {
+            socketId: socket.id,
+            error: `Invalid prompt type: ${promptType}. Valid types: coding, theory, query, or null/empty to use default`,
+            timestamp: Date.now(),
+          });
+          return;
+        }
+
+        // Store prompt type for this socket (null or empty means use default/system prompt)
+        const normalizedType =
+          promptType && promptType.trim() ? promptType.toLowerCase() : null;
+
+        this.promptTypes.set(socket.id, normalizedType);
+
+        log.info('Prompt type set', {
+          socketId: socket.id,
+          promptType: normalizedType || 'default (system-prompt)',
+        });
+
+        socket.emit('prompt_type_set', {
+          socketId: socket.id,
+          promptType: normalizedType,
+          message: `Prompt type set to: ${
+            normalizedType || 'default (system-prompt)'
+          }`,
+          timestamp: Date.now(),
+        });
+      });
+
       // Handle process_transcription event - process accumulated transcription
       socket.on('process_transcription', async () => {
         const chunks = this.transcriptionChunks.get(socket.id);
@@ -313,11 +363,21 @@ class DataHandler extends EventEmitter {
           // Emit AI processing started event
           this.emitAIStarted('transcription', fullTranscription, false);
 
+          // Get prompt type for this socket
+          const promptType = this.getPromptType(socket.id);
+          if (promptType) {
+            log.info('Using custom prompt type for transcription processing', {
+              socketId: socket.id,
+              promptType,
+            });
+          }
+
           const aiStartTime = Date.now();
 
           // Call AI service to process transcription
           const aiResponse = await aiService.askGptTranscription(
             fullTranscription,
+            promptType,
           );
 
           const aiDuration = Date.now() - aiStartTime;
@@ -392,6 +452,26 @@ class DataHandler extends EventEmitter {
    */
   clearStoredCoordinates() {
     this.storedCoordinates = null;
+  }
+
+  /**
+   * Get prompt type for a specific socket
+   * Returns null if no prompt type is set (will use default/system prompt)
+   */
+  getPromptType(socketId) {
+    return this.promptTypes.get(socketId) || null;
+  }
+
+  /**
+   * Get prompt type for any active socket (used when socket ID is not available)
+   * Returns the first available prompt type, or null if none set
+   */
+  getAnyPromptType() {
+    if (this.promptTypes.size === 0) {
+      return null;
+    }
+    // Return the first prompt type found
+    return this.promptTypes.values().next().value || null;
   }
 
   /**

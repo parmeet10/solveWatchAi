@@ -187,6 +187,14 @@ socket.on('connected', (data) => {
   console.log('Connected:', data.socketId);
 });
 
+// Optional: Set prompt type for specialized processing
+socket.emit('set_prompt_type', { promptType: 'coding' });
+
+// Listen for prompt type confirmation
+socket.on('prompt_type_set', (data) => {
+  console.log('Prompt type set to:', data.promptType);
+});
+
 // Send transcription chunks as they arrive
 socket.emit('transcription', {
   textChunk: 'The interviewer wants me to implement a binary search tree',
@@ -298,16 +306,48 @@ The transcription feature uses the same AI provider configuration as the image p
 
 ### Prompt Configuration
 
-Transcription processing uses a specialized prompt located at:
+Transcription processing uses prompts based on the configured prompt type:
 
-- `prompts/transcription-prompt.txt`
+**Default Prompt:**
+- `prompts/transcription-prompt.txt` - Used when no specific prompt type is set
 
-The prompt is optimized for:
+**Specialized Prompts (via `set_prompt_type` event):**
+- `prompts/coding-prompt.txt` - For coding problems and algorithmic challenges
+- `prompts/theory-prompt.txt` - For theoretical questions about concepts, system design, databases, etc.
+- `prompts/query-prompt.txt` - For database query questions (SQL or MongoDB)
 
+**Setting Prompt Type:**
+
+Clients can set a prompt type before processing transcriptions:
+
+```javascript
+// Set coding prompt
+socket.emit('set_prompt_type', { promptType: 'coding' });
+
+// Set theory prompt
+socket.emit('set_prompt_type', { promptType: 'theory' });
+
+// Set query prompt
+socket.emit('set_prompt_type', { promptType: 'query' });
+
+// Reset to default transcription prompt
+socket.emit('set_prompt_type', { promptType: null });
+```
+
+**Behavior:**
+- The prompt type is stored per socket connection
+- All subsequent transcription processing will use the selected prompt type
+- If no prompt type is set, the default `transcription-prompt.txt` is used
+- The prompt type persists until changed or the socket disconnects
+
+**Default Transcription Prompt Features:**
 - Extracting questions from conversational transcriptions
 - Handling filler words and incomplete sentences
 - Distinguishing coding problems from theoretical questions
 - Providing appropriate response formats
+
+**See Also:**
+- See the main [API Documentation](./API_DOCUMENTATION.md) for complete `set_prompt_type` event details
 
 ---
 

@@ -396,6 +396,62 @@ Trigger rectangle region capture for OCR. The server will monitor system mouse c
 
 ---
 
+#### `set_prompt_type`
+
+Set the prompt type to use for AI processing. This allows you to specify which specialized prompt should be used for the next AI requests (screenshots and transcriptions).
+
+**Payload:**
+
+```json
+{
+  "promptType": "coding"
+}
+```
+
+**Payload Fields:**
+
+- `promptType` (string, optional): The type of prompt to use. Valid values:
+  - `"coding"` - Use coding prompt (for coding problems)
+  - `"theory"` - Use theory prompt (for theoretical questions)
+  - `"query"` - Use query prompt (for database query questions)
+  - `null` or `""` (empty string) - Use default system prompt
+
+**Behavior:**
+
+- The prompt type is stored per socket connection
+- All subsequent AI processing (screenshots and transcriptions) will use the selected prompt type
+- The prompt type persists until changed or the socket disconnects
+- If no prompt type is set or set to `null`/empty, the default `system-prompt.txt` is used
+- Invalid prompt types will result in an error event
+
+**Response:**
+
+The server will emit a `prompt_type_set` event to confirm the prompt type was set.
+
+**Error Handling:**
+
+If an invalid prompt type is provided, the server will emit an `error` event with details.
+
+**Example:**
+
+```javascript
+// Set coding prompt
+socket.emit('set_prompt_type', { promptType: 'coding' });
+
+// Set theory prompt
+socket.emit('set_prompt_type', { promptType: 'theory' });
+
+// Set query prompt
+socket.emit('set_prompt_type', { promptType: 'query' });
+
+// Reset to default (system prompt)
+socket.emit('set_prompt_type', { promptType: null });
+// or
+socket.emit('set_prompt_type', { promptType: '' });
+```
+
+---
+
 ### Server Events (Events Client Receives)
 
 #### `connected`
@@ -580,6 +636,32 @@ Emitted when a socket error occurs.
 
 ---
 
+#### `prompt_type_set`
+
+Emitted when a prompt type is successfully set via the `set_prompt_type` event.
+
+**Payload:**
+
+```json
+{
+  "socketId": "abc123xyz",
+  "promptType": "coding",
+  "message": "Prompt type set to: coding",
+  "timestamp": 1703502650000
+}
+```
+
+**Payload Fields:**
+
+- `socketId` (string): Socket connection ID
+- `promptType` (string | null): The prompt type that was set. Will be `null` if reset to default
+- `message` (string): Confirmation message indicating the prompt type that was set
+- `timestamp` (number): Unix timestamp in milliseconds
+
+**Note:** If `promptType` is `null`, it means the default system prompt will be used.
+
+---
+
 ## Processing Flow
 
 ### Image Processing Pipeline
@@ -610,6 +692,17 @@ If any error occurs:
 
 - When `useContextEnabled` is `true` and a previous AI response exists, the AI service uses the previous response as context for the next request.
 - Context usage is logged on the server but not included in WebSocket event payloads.
+
+### Prompt Type Selection
+
+- Clients can set a prompt type using the `set_prompt_type` event to use specialized prompts for different question types.
+- Available prompt types:
+  - **`coding`**: Optimized for coding problems and algorithmic challenges
+  - **`theory`**: Optimized for theoretical questions about concepts, system design, databases, etc.
+  - **`query`**: Optimized for database query questions (SQL or MongoDB)
+- The prompt type is stored per socket connection and applies to all subsequent AI processing (screenshots and transcriptions).
+- If no prompt type is set, the default `system-prompt.txt` is used.
+- Prompt types persist until changed or the socket disconnects.
 
 ---
 
@@ -678,6 +771,15 @@ socket.on('connected', (data) => {
 
 // Trigger region capture (monitor mouse clicks for rectangle)
 socket.emit('capture');
+
+// Set prompt type for AI processing
+socket.emit('set_prompt_type', { promptType: 'coding' });
+
+// Listen for prompt type confirmation
+socket.on('prompt_type_set', (data) => {
+  console.log('Prompt type set:', data.promptType);
+  console.log('Message:', data.message);
+});
 
 // Processing events
 socket.on('screenshot_captured', (data) => {
