@@ -187,14 +187,6 @@ socket.on('connected', (data) => {
   console.log('Connected:', data.socketId);
 });
 
-// Optional: Set prompt type for specialized processing
-socket.emit('set_prompt_type', { promptType: 'coding' });
-
-// Listen for prompt type confirmation
-socket.on('prompt_type_set', (data) => {
-  console.log('Prompt type set to:', data.promptType);
-});
-
 // Send transcription chunks as they arrive
 socket.emit('transcription', {
   textChunk: 'The interviewer wants me to implement a binary search tree',
@@ -302,52 +294,20 @@ The transcription feature uses the same AI provider configuration as the image p
 
 - Supports multiple providers (OpenAI, Groq, Gemini)
 - Automatic fallback on provider failures
-- Provider selection configured in `config/api-keys.json`
+- Provider selection configured in `backend/config/api-keys.json`
 
 ### Prompt Configuration
 
-Transcription processing uses prompts based on the configured prompt type:
+Transcription processing uses a specialized prompt located at:
 
-**Default Prompt:**
-- `prompts/transcription-prompt.txt` - Used when no specific prompt type is set
+- `backend/prompts/transcription-prompt.txt`
 
-**Specialized Prompts (via `set_prompt_type` event):**
-- `prompts/coding-prompt.txt` - For coding problems and algorithmic challenges
-- `prompts/theory-prompt.txt` - For theoretical questions about concepts, system design, databases, etc.
-- `prompts/query-prompt.txt` - For database query questions (SQL or MongoDB)
+The prompt is optimized for:
 
-**Setting Prompt Type:**
-
-Clients can set a prompt type before processing transcriptions:
-
-```javascript
-// Set coding prompt
-socket.emit('set_prompt_type', { promptType: 'coding' });
-
-// Set theory prompt
-socket.emit('set_prompt_type', { promptType: 'theory' });
-
-// Set query prompt
-socket.emit('set_prompt_type', { promptType: 'query' });
-
-// Reset to default transcription prompt
-socket.emit('set_prompt_type', { promptType: null });
-```
-
-**Behavior:**
-- The prompt type is stored per socket connection
-- All subsequent transcription processing will use the selected prompt type
-- If no prompt type is set, the default `transcription-prompt.txt` is used
-- The prompt type persists until changed or the socket disconnects
-
-**Default Transcription Prompt Features:**
 - Extracting questions from conversational transcriptions
 - Handling filler words and incomplete sentences
 - Distinguishing coding problems from theoretical questions
 - Providing appropriate response formats
-
-**See Also:**
-- See the main [API Documentation](./API_DOCUMENTATION.md) for complete `set_prompt_type` event details
 
 ---
 
@@ -443,13 +403,13 @@ socket.emit('set_prompt_type', { promptType: null });
 
 ### Implementation Files
 
-- **Socket Handler:** `src/sockets/dataHandler.js`
+- **Socket Handler:** `backend/src/sockets/dataHandler.js`
   - `transcriptionChunks` Map stores chunks per socket.id
   - Event handlers for `transcription` and `process_transcription`
-- **AI Service:** `src/services/ai.service.js`
+- **AI Service:** `backend/src/services/ai.service.js`
   - `askGptTranscription()` method processes transcription
   - `readTranscriptionPromptFromFile()` loads transcription prompt
-- **Prompt File:** `prompts/transcription-prompt.txt`
+- **Prompt File:** `backend/prompts/transcription-prompt.txt`
   - Specialized prompt for transcription processing
   - Handles both coding and theoretical questions
 

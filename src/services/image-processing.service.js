@@ -71,25 +71,6 @@ class ImageProcessingService {
         }
       });
 
-      // Check for stored coordinates from capture events
-      // Get and clear coordinates immediately (before OCR) - single use only
-      let coordinates = null;
-      this.dataHandlers.forEach((handler) => {
-        if (handler && handler.getStoredCoordinates) {
-          coordinates = handler.getStoredCoordinates();
-          if (coordinates) {
-            // Clear coordinates immediately - next screenshot will use full OCR
-            handler.clearStoredCoordinates();
-            log.info('Using stored coordinates for OCR region extraction', {
-              x: coordinates.x,
-              y: coordinates.y,
-              width: coordinates.width,
-              height: coordinates.height,
-            });
-          }
-        }
-      });
-
       // Emit OCR started event
       this.dataHandlers.forEach((handler) => {
         if (handler && handler.emitOCRStarted) {
@@ -98,11 +79,9 @@ class ImageProcessingService {
       });
 
       const ocrStartTime = Date.now();
-      // Pass coordinates to OCR service if available (will crop image before OCR)
-      const extractedText = await ocrService.extractText(
-        imagePath,
-        coordinates,
-      );
+      // Image is already cropped by screenshot monitor if coordinates were received
+      // Pass null for coordinates since cropping is handled before this step
+      const extractedText = await ocrService.extractText(imagePath, null);
       const ocrDuration = Date.now() - ocrStartTime;
 
       // Emit OCR complete event
@@ -127,48 +106,65 @@ class ImageProcessingService {
         }
       });
 
-      // Get prompt type from handlers (check all handlers for prompt type)
-      let promptType = null;
-      this.dataHandlers.forEach((handler) => {
-        if (handler && handler.getAnyPromptType) {
-          const handlerPromptType = handler.getAnyPromptType();
-          if (handlerPromptType) {
-            promptType = handlerPromptType;
-          }
-        }
-      });
-
-      if (promptType) {
-        log.info('Using custom prompt type for AI processing', {
-          processId,
-          filename,
-          promptType,
-        });
-      }
-
       const aiStartTime = Date.now();
       let gptResponse;
+
+      // Always use default 'system' prompt for initial screenshot processing
+      // Other prompt types (theory, coding, debug) are used via use_prompt event
+      const promptType = 'system';
 
       if (actuallyUsedContext) {
         log.info('Using context for AI processing', {
           processId,
           filename,
           contextLength: this.lastResponse.length,
-          promptType: promptType || 'default',
+          promptType: 'context',
         });
         gptResponse = await aiService.askGptWithContext(
           extractedText,
           this.lastResponse,
-          promptType,
+          'context',
         );
       } else {
-        gptResponse = await aiService.askGpt(extractedText, promptType);
+        log.info('Using system prompt for AI processing', {
+          processId,
+          filename,
+          promptType: 'system',
+        });
+        gptResponse = await aiService.askGpt(extractedText, 'system');
       }
 
       const aiDuration = Date.now() - aiStartTime;
       const provider = gptResponse.provider || 'unknown';
 
-      // Emit AI complete event
+      // Generate messageId for this processing
+      const messageId = `msg-${Date.now()}-${Math.random()
+        .toString(36)
+        .substr(2, 9)}`;
+
+      // Store question (extracted text) and answer (AI response) with messageId
+      // Try to get socketId from any active socket (for pending prompts)
+      let socketIdForMessage = null;
+      this.dataHandlers.forEach((handler) => {
+        if (handler && handler.namespace) {
+          // Get first active socket if available
+          const sockets = handler.namespace.sockets;
+          if (sockets && sockets.size > 0) {
+            socketIdForMessage = Array.from(sockets.keys())[0];
+          }
+        }
+        if (handler && handler.storeMessageData) {
+          handler.storeMessageData(
+            messageId,
+            extractedText, // question = extracted text from screenshot
+            gptResponse.message.content, // answer = AI response
+            'system', // Always 'system' for initial screenshot processing
+            socketIdForMessage,
+          );
+        }
+      });
+
+      // Emit AI complete event with messageId
       this.dataHandlers.forEach((handler) => {
         if (handler && handler.emitAIComplete) {
           handler.emitAIComplete(
@@ -177,6 +173,7 @@ class ImageProcessingService {
             provider,
             aiDuration,
             actuallyUsedContext,
+            messageId,
           );
         }
       });

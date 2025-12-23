@@ -2,864 +2,468 @@
 
 ## Base URL
 
-- **HTTP**: `http://localhost:4000` (or configured port)
+- **HTTP**: `http://localhost:4000`
 - **WebSocket**: `ws://localhost:4000/data-updates`
 
 ---
 
-## REST API Endpoints
+## REST API
 
-### 1. Configuration Management
+### Configuration
 
-#### GET `/api/config/keys`
-
-Retrieve API keys configuration (keys are masked for security).
+#### `GET /api/config/keys`
+Get API keys configuration (keys masked as `"***"`).
 
 **Response:**
-
 ```json
 {
   "success": true,
   "config": {
-    "keys": {
-      "openai": "***",
-      "grok": "***",
-      "gemini": "***"
-    },
+    "keys": { "openai": "***", "grok": "***", "gemini": "***" },
     "order": ["openai", "grok", "gemini"],
     "enabled": ["openai", "grok"]
   }
 }
 ```
 
-**Response (no config exists):**
+#### `POST /api/config/keys`
+Save API keys configuration. Masked values (`"***"`) are ignored.
 
+**Request:**
 ```json
 {
-  "success": true,
-  "config": null
-}
-```
-
-**Error Response:**
-
-```json
-{
-  "success": false,
-  "error": "Failed to read configuration"
-}
-```
-
-**Status Codes:**
-
-- `200` - Success
-- `500` - Server error
-
----
-
-#### POST `/api/config/keys`
-
-Save API keys configuration. Only updates keys that are provided (not masked values).
-
-**Request Body:**
-
-```json
-{
-  "keys": {
-    "openai": "sk-...",
-    "grok": "gsk_...",
-    "gemini": "AIza..."
-  },
-  "order": ["openai", "grok", "gemini"],
+  "keys": { "openai": "sk-...", "grok": "gsk_..." },
+  "order": ["openai", "grok"],
   "enabled": ["openai", "grok"]
 }
 ```
 
-**Request Body Fields:**
-
-- `keys` (object, optional): Object mapping provider IDs to API keys
-  - Provider IDs: `"openai"`, `"grok"`, `"gemini"`
-  - Keys that are `"***"` or empty strings are ignored (preserves existing values)
-- `order` (array, required): Array of provider IDs in priority order
-- `enabled` (array, optional): Array of enabled provider IDs. If not provided, defaults to all providers with valid keys
-
-**Response:**
-
-```json
-{
-  "success": true,
-  "message": "Configuration saved successfully",
-  "config": {
-    "keys": {
-      "openai": "***",
-      "grok": "***",
-      "gemini": "***"
-    },
-    "order": ["openai", "grok", "gemini"],
-    "enabled": ["openai", "grok"]
-  }
-}
-```
-
-**Error Responses:**
-
-Invalid format:
-
-```json
-{
-  "success": false,
-  "error": "Invalid configuration format"
-}
-```
-
-No enabled providers:
-
-```json
-{
-  "success": false,
-  "error": "At least one AI provider must be enabled"
-}
-```
-
-Server error:
-
-```json
-{
-  "success": false,
-  "error": "Failed to save configuration"
-}
-```
-
-**Status Codes:**
-
-- `200` - Success
-- `400` - Bad request (invalid format or no enabled providers)
-- `500` - Server error
+**Status:** `200` Success | `400` Bad Request | `500` Server Error
 
 ---
 
-### 2. Context State Management
+### Context State
 
-#### GET `/api/context-state`
-
-Get the current context state (whether context from previous responses is enabled).
+#### `GET /api/context-state`
+Get context usage state.
 
 **Response:**
-
 ```json
-{
-  "useContextEnabled": false
-}
+{ "useContextEnabled": false }
 ```
 
-**Error Response:**
+#### `POST /api/context-state`
+Update context usage state.
 
+**Request:**
 ```json
-{
-  "error": "Failed to get context state"
-}
+{ "enabled": true }
 ```
 
-**Status Codes:**
-
-- `200` - Success
-- `500` - Server error
+**Status:** `200` Success | `400` Bad Request | `500` Server Error
 
 ---
 
-#### POST `/api/context-state`
+### Image Processing
 
-Update the context state.
-
-**Request Body:**
-
-```json
-{
-  "enabled": true
-}
-```
-
-**Request Body Fields:**
-
-- `enabled` (boolean, required): Whether to use context from previous AI responses
-
-**Response:**
-
-```json
-{
-  "success": true,
-  "useContextEnabled": true
-}
-```
-
-**Error Responses:**
-
-Invalid request:
-
-```json
-{
-  "error": "Invalid request. \"enabled\" must be a boolean."
-}
-```
-
-Server error:
-
-```json
-{
-  "error": "Failed to update context state"
-}
-```
-
-**Status Codes:**
-
-- `200` - Success
-- `400` - Bad request (invalid boolean value)
-- `500` - Server error
-
----
-
-### 3. Image Processing
-
-#### POST `/api/upload`
-
-Upload and process an image. The image is processed through OCR and AI analysis.
+#### `POST /api/upload`
+Upload and process image (OCR + AI analysis).
 
 **Content-Type:** `multipart/form-data`
 
-**Request:**
-
-- Form field: `image` (file, required)
-  - Supported formats: JPEG, JPG, PNG, GIF, BMP, WEBP
-  - Max file size: 10MB
+**Request:** Form field `image` (file, max 10MB, formats: JPEG, PNG, GIF, BMP, WEBP)
 
 **Response:**
-
 ```json
 {
   "success": true,
   "message": "Image processed successfully",
   "filename": "screenshot.png",
-  "extractedText": "Sample extracted text from image...",
-  "gptResponse": "AI analysis of the extracted text...",
+  "extractedText": "Preview...",
+  "gptResponse": "AI analysis...",
   "usedContext": false
 }
 ```
 
-**Response Fields:**
+**Status:** `200` Success | `400` Bad Request | `500` Server Error
 
-- `success` (boolean): Whether processing was successful
-- `message` (string): Status message
-- `filename` (string): Original filename of uploaded image
-- `extractedText` (string): Preview of extracted text (first 200 characters)
-- `gptResponse` (string): Preview of AI response (first 200 characters)
-- `usedContext` (boolean): Whether previous context was used in AI processing
+**Note:** File deleted after processing.
 
-**Error Responses:**
-
-No file uploaded:
-
-```json
-{
-  "success": false,
-  "error": "No file uploaded"
-}
-```
-
-File too large:
-
-```json
-{
-  "success": false,
-  "error": "File too large. Maximum size is 10MB."
-}
-```
-
-Invalid file type:
-
-```json
-{
-  "success": false,
-  "error": "Only image files are allowed!"
-}
-```
-
-Processing error:
-
-```json
-{
-  "success": false,
-  "error": "Error processing image"
-}
-```
-
-**Status Codes:**
-
-- `200` - Success
-- `400` - Bad request (no file uploaded, file too large, or invalid file type)
-- `500` - Server error (processing failed)
-
-**Note:** The uploaded file is automatically deleted after processing (success or failure).
-
----
-
-#### GET `/api/data`
-
-Retrieve all processed image data.
+#### `GET /api/data`
+Get all processed data (images + transcriptions).
 
 **Response:**
-
 ```json
 [
   {
-    "filename": "screenshot1.png",
+    "filename": "screenshot.png",
     "timestamp": "12/25/2024, 10:30:45 AM",
-    "extractedText": "Sample extracted text...",
-    "gptResponse": "AI analysis response...",
-    "usedContext": false
-  },
-  {
-    "filename": "screenshot2.png",
-    "timestamp": "12/25/2024, 10:31:20 AM",
-    "extractedText": "Another extracted text...",
-    "gptResponse": "Another AI analysis...",
-    "usedContext": true
+    "extractedText": "Text...",
+    "gptResponse": "Response...",
+    "usedContext": false,
+    "type": "image" // or "transcription"
   }
 ]
 ```
-
-**Response Fields (per item):**
-
-- `filename` (string): Original filename
-- `timestamp` (string): Processing timestamp in locale string format
-- `extractedText` (string): Extracted text (truncated to 500 chars if longer)
-- `gptResponse` (string): AI response (truncated to 1000 chars if longer)
-- `usedContext` (boolean): Whether context was used
-- `type` (string, optional): Type of item (e.g., "image")
-
-**Status Codes:**
-
-- `200` - Success (returns empty array `[]` if no data or on error)
 
 ---
 
 ## WebSocket API
 
-### Namespace: `/data-updates`
+### Connection
 
-Connect to the WebSocket namespace to receive real-time updates about image processing events.
-
-**Connection URL:**
-
-```
-ws://localhost:4000/data-updates
-```
-
+**Namespace:** `/data-updates`  
 **Transport:** WebSocket only
 
----
-
-### Client Events (Events Client Sends)
-
-#### `disconnect`
-
-Client disconnects from the server.
-
-**No payload required**
+```javascript
+const socket = io('http://localhost:4000/data-updates', {
+  transports: ['websocket']
+});
+```
 
 ---
 
-#### `error`
+### Client → Server Events
 
-Client reports an error (handled automatically by Socket.io).
-
-**Payload:** Error object
-
----
-
-#### `capture`
-
-Trigger rectangle region capture for OCR. The server will monitor system mouse clicks to capture a rectangular region defined by two clicks (top-left and bottom-right corners). After two clicks are captured, a screenshot is automatically taken and processed with OCR on the specified region.
-
-**No payload required**
-
-**Behavior:**
-
-- Server starts monitoring system mouse clicks after receiving this event
-- First click defines the top-left corner of the rectangle
-- Second click defines the bottom-right corner of the rectangle
-- Coordinates are automatically normalized (handles clicks in any order)
-- Screenshot is taken automatically after both clicks are captured
-- Coordinates are stored and used for the next screenshot OCR processing
-- Coordinates are cleared after use (single-use only)
-
-**Note:** The mouse monitoring stream is automatically cleaned up after capture or on client disconnect.
-
----
-
-#### `set_prompt_type`
-
-Set the prompt type to use for AI processing. This allows you to specify which specialized prompt should be used for the next AI requests (screenshots and transcriptions).
+#### `transcription`
+Send audio transcription text chunk.
 
 **Payload:**
+```json
+{ "textChunk": "The interviewer is asking..." }
+```
 
+**Behavior:** Chunks accumulated per connection. Send multiple chunks before processing.
+
+#### `process_transcription`
+Process all accumulated transcription chunks.
+
+**Payload:** None
+
+**Flow:** Combines chunks → AI processing → Returns answer with `messageId`
+
+#### `use_prompt`
+Process a previous AI response with a different prompt type.
+
+**Payload:**
 ```json
 {
-  "promptType": "coding"
+  "promptType": "debug" | "theory" | "coding",
+  "messageId": "msg-123...",
+  "screenshotRequired": false
 }
 ```
 
-**Payload Fields:**
-
-- `promptType` (string, optional): The type of prompt to use. Valid values:
-  - `"coding"` - Use coding prompt (for coding problems)
-  - `"theory"` - Use theory prompt (for theoretical questions)
-  - `"query"` - Use query prompt (for database query questions)
-  - `null` or `""` (empty string) - Use default system prompt
-
 **Behavior:**
-
-- The prompt type is stored per socket connection
-- All subsequent AI processing (screenshots and transcriptions) will use the selected prompt type
-- The prompt type persists until changed or the socket disconnects
-- If no prompt type is set or set to `null`/empty, the default `system-prompt.txt` is used
-- Invalid prompt types will result in an error event
-
-**Response:**
-
-The server will emit a `prompt_type_set` event to confirm the prompt type was set.
-
-**Error Handling:**
-
-If an invalid prompt type is provided, the server will emit an `error` event with details.
-
-**Example:**
-
-```javascript
-// Set coding prompt
-socket.emit('set_prompt_type', { promptType: 'coding' });
-
-// Set theory prompt
-socket.emit('set_prompt_type', { promptType: 'theory' });
-
-// Set query prompt
-socket.emit('set_prompt_type', { promptType: 'query' });
-
-// Reset to default (system prompt)
-socket.emit('set_prompt_type', { promptType: null });
-// or
-socket.emit('set_prompt_type', { promptType: '' });
-```
+- If `screenshotRequired: true`, waits for next screenshot upload
+- If `screenshotRequired: false`, processes immediately
+- Generates new `messageId` for the response
 
 ---
 
-### Server Events (Events Client Receives)
+### Server → Client Events
 
 #### `connected`
-
-Emitted immediately upon successful connection.
+Emitted on connection.
 
 **Payload:**
-
 ```json
 {
-  "socketId": "abc123xyz",
+  "socketId": "abc123",
   "connectedAt": "2024-12-25T10:30:45.123Z",
   "timestamp": 1703502645123
 }
 ```
 
-**Payload Fields:**
-
-- `socketId` (string): Unique socket connection ID
-- `connectedAt` (string): ISO timestamp of connection
-- `timestamp` (number): Unix timestamp in milliseconds
-
----
-
 #### `screenshot_captured`
-
-Emitted when a screenshot is captured and ready for processing.
+Screenshot captured and ready for processing.
 
 **Payload:**
-
 ```json
-{
-  "message": "Screenshot captured: screenshot.png"
-}
+{ "message": "Screenshot captured: screenshot.png" }
 ```
-
-**Payload Fields:**
-
-- `message` (string): Status message indicating the screenshot was captured with filename
-
----
 
 #### `ocr_started`
-
-Emitted when OCR (Optical Character Recognition) processing begins.
+OCR processing started.
 
 **Payload:**
-
 ```json
-{
-  "message": "OCR started"
-}
+{ "message": "OCR started" }
 ```
-
-**Payload Fields:**
-
-- `message` (string): Status message indicating OCR processing has started
-
----
 
 #### `ocr_complete`
-
-Emitted when OCR processing completes successfully.
+OCR processing completed.
 
 **Payload:**
-
 ```json
-{
-  "message": "OCR completed"
-}
+{ "message": "OCR completed" }
 ```
-
-**Payload Fields:**
-
-- `message` (string): Status message indicating OCR processing has completed
-
-**Note:** The extracted text is logged on the server but not included in the event payload.
-
----
 
 #### `ai_processing_started`
-
-Emitted when AI processing begins.
+AI processing started.
 
 **Payload:**
-
 ```json
-{
-  "message": "AI processing started"
-}
+{ "message": "AI processing started" }
 ```
-
-**Payload Fields:**
-
-- `message` (string): Status message indicating AI processing has started
-
----
 
 #### `ai_processing_complete`
-
-Emitted when AI processing completes successfully.
+AI processing completed.
 
 **Payload:**
-
 ```json
 {
-  "response": "This is the AI-generated response analyzing the extracted text from the image...",
-  "message": "AI processing completed"
+  "response": "AI-generated response...",
+  "message": "AI processing completed",
+  "messageId": "msg-123..." // Present for transcription and use_prompt flows
 }
 ```
 
-**Payload Fields:**
+#### `use_prompt_set`
+Prompt type set (waiting or processing).
 
-- `response` (string): The complete AI-generated response text
-- `message` (string): Status message indicating AI processing has completed
+**Payload:**
+```json
+{
+  "promptType": "debug",
+  "messageId": "msg-123...",
+  "screenshotRequired": true,
+  "message": "Waiting for screenshot...",
+  "timestamp": 1703502645123
+}
+```
 
----
+#### `use_prompt_error`
+Error with use_prompt request.
+
+**Payload:**
+```json
+{
+  "error": "Invalid prompt type or messageId not found",
+  "messageId": "msg-123..." // Optional
+}
+```
 
 #### `aiprocessing_error`
-
-Emitted when an error occurs during processing (OCR or AI stage).
+Processing error (OCR, AI, or transcription).
 
 **Payload:**
-
 ```json
 {
-  "error": "OCR processing failed",
-  "message": "Error during ocr processing"
+  "error": "Error message",
+  "message": "Error during ocr processing" // or "ai processing" or "transcription processing"
 }
 ```
 
-**Payload Fields:**
-
-- `error` (string): The error message describing what went wrong
-- `message` (string): Status message indicating which stage encountered an error (`"Error during ocr processing"` or `"Error during ai processing"`)
-
----
-
 #### `connection_status`
-
-Emitted when connection status changes (e.g., on disconnect).
+Connection status change (e.g., disconnect).
 
 **Payload:**
-
 ```json
 {
   "status": "disconnected",
-  "socketId": "abc123xyz",
+  "socketId": "abc123",
   "reason": "client disconnect",
   "timestamp": 1703502650000
 }
 ```
 
-**Payload Fields:**
-
-- `status` (string): Connection status (`"disconnected"`)
-- `socketId` (string): Socket connection ID
-- `reason` (string): Reason for status change
-- `timestamp` (number): Unix timestamp in milliseconds
-
----
-
 #### `error`
-
-Emitted when a socket error occurs.
+Socket error.
 
 **Payload:**
-
 ```json
 {
-  "socketId": "abc123xyz",
-  "error": "Connection error message",
+  "socketId": "abc123",
+  "error": "Error message",
   "timestamp": 1703502650000
 }
 ```
 
-**Payload Fields:**
+---
 
-- `socketId` (string): Socket connection ID
-- `error` (string): Error message
-- `timestamp` (number): Unix timestamp in milliseconds
+## Processing Flows
+
+### Screenshot Flow
+1. Screenshot captured → `screenshot_captured`
+2. OCR starts → `ocr_started`
+3. OCR completes → `ocr_complete`
+4. AI starts → `ai_processing_started`
+5. AI completes → `ai_processing_complete` (with `messageId`)
+
+### Transcription Flow
+1. Send chunks → `transcription` (multiple times)
+2. Process → `process_transcription`
+3. AI starts → `ai_processing_started`
+4. AI completes → `ai_processing_complete` (with `messageId`)
+
+### Use Prompt Flow
+1. Request → `use_prompt` (with `messageId` from previous response)
+2. If `screenshotRequired: true` → `use_prompt_set` → wait for screenshot
+3. If `screenshotRequired: false` → `use_prompt_set` → process immediately
+4. AI starts → `ai_processing_started`
+5. AI completes → `ai_processing_complete` (with new `messageId`)
 
 ---
 
-#### `prompt_type_set`
+## Frontend Integration Guide
 
-Emitted when a prompt type is successfully set via the `set_prompt_type` event.
+### Connection Setup
+```javascript
+import io from 'socket.io-client';
 
-**Payload:**
+const socket = io('http://localhost:4000/data-updates', {
+  transports: ['websocket']
+});
 
-```json
-{
-  "socketId": "abc123xyz",
-  "promptType": "coding",
-  "message": "Prompt type set to: coding",
-  "timestamp": 1703502650000
-}
+socket.on('connected', (data) => {
+  console.log('Connected:', data.socketId);
+});
 ```
 
-**Payload Fields:**
+### Screenshot Processing
+Listen for screenshot processing events:
+```javascript
+socket.on('screenshot_captured', (data) => { /* ... */ });
+socket.on('ocr_started', (data) => { /* ... */ });
+socket.on('ocr_complete', (data) => { /* ... */ });
+socket.on('ai_processing_started', (data) => { /* ... */ });
+socket.on('ai_processing_complete', (data) => {
+  // Store messageId for use_prompt functionality
+  const messageId = data.messageId;
+});
+```
 
-- `socketId` (string): Socket connection ID
-- `promptType` (string | null): The prompt type that was set. Will be `null` if reset to default
-- `message` (string): Confirmation message indicating the prompt type that was set
-- `timestamp` (number): Unix timestamp in milliseconds
+### Audio Transcription
+Send transcription chunks and process:
+```javascript
+// Send chunks as they arrive
+socket.emit('transcription', { textChunk: 'Chunk 1...' });
+socket.emit('transcription', { textChunk: 'Chunk 2...' });
 
-**Note:** If `promptType` is `null`, it means the default system prompt will be used.
+// Process when question complete
+socket.emit('process_transcription');
+
+// Listen for response
+socket.on('ai_processing_complete', (data) => {
+  const response = data.response;
+  const messageId = data.messageId; // Store for use_prompt
+});
+```
+
+### Use Prompt Feature
+Process previous responses with different prompts:
+```javascript
+// Process without screenshot
+socket.emit('use_prompt', {
+  promptType: 'debug', // or 'theory', 'coding'
+  messageId: 'msg-123...',
+  screenshotRequired: false
+});
+
+// Process with screenshot (waits for next upload)
+socket.emit('use_prompt', {
+  promptType: 'debug',
+  messageId: 'msg-123...',
+  screenshotRequired: true
+});
+
+// Listen for prompt set confirmation
+socket.on('use_prompt_set', (data) => {
+  if (data.screenshotRequired) {
+    // Wait for screenshot upload
+  }
+});
+
+// Listen for errors
+socket.on('use_prompt_error', (error) => {
+  console.error('Prompt error:', error.error);
+});
+```
+
+### Error Handling
+```javascript
+socket.on('aiprocessing_error', (error) => {
+  console.error('Processing error:', error.error);
+});
+
+socket.on('error', (error) => {
+  console.error('Socket error:', error);
+});
+
+socket.on('connection_status', (status) => {
+  if (status.status === 'disconnected') {
+    // Handle disconnect
+  }
+});
+```
 
 ---
 
-## Processing Flow
+## Audio Integration Guide
 
-### Image Processing Pipeline
+### Transcription Chunk Flow
+1. **Capture audio** → Convert to text (client-side or external service)
+2. **Send chunks** → `socket.emit('transcription', { textChunk: '...' })`
+3. **Accumulate** → Multiple chunks stored per connection
+4. **Process** → `socket.emit('process_transcription')` when question complete
+5. **Receive** → `ai_processing_complete` with answer and `messageId`
 
-**Standard Flow:**
+### Best Practices
+- Send meaningful chunks (complete phrases/sentences)
+- Process when question is fully transcribed
+- Store `messageId` from responses for follow-up prompts
+- Handle errors gracefully with retry logic
 
-1. **Screenshot Capture** → `screenshot_captured` event
-2. **OCR Processing Start** → `ocr_started` event
-3. **OCR Processing Complete** → `ocr_complete` event
-4. **AI Processing Start** → `ai_processing_started` event
-5. **AI Processing Complete** → `ai_processing_complete` event
-
-**With Region Capture:**
-
-1. **Client sends `capture` event** → Server monitors mouse clicks
-2. **Two clicks captured** → Rectangle coordinates stored
-3. **Screenshot automatically taken** → `screenshot_captured` event
-4. **OCR Processing Start** → `ocr_started` event (with region cropping)
-5. **OCR Processing Complete** → `ocr_complete` event
-6. **AI Processing Start** → `ai_processing_started` event
-7. **AI Processing Complete** → `ai_processing_complete` event
-
-If any error occurs:
-
-- **Error Event** → `aiprocessing_error` event
-
-### Context Usage
-
-- When `useContextEnabled` is `true` and a previous AI response exists, the AI service uses the previous response as context for the next request.
-- Context usage is logged on the server but not included in WebSocket event payloads.
-
-### Prompt Type Selection
-
-- Clients can set a prompt type using the `set_prompt_type` event to use specialized prompts for different question types.
-- Available prompt types:
-  - **`coding`**: Optimized for coding problems and algorithmic challenges
-  - **`theory`**: Optimized for theoretical questions about concepts, system design, databases, etc.
-  - **`query`**: Optimized for database query questions (SQL or MongoDB)
-- The prompt type is stored per socket connection and applies to all subsequent AI processing (screenshots and transcriptions).
-- If no prompt type is set, the default `system-prompt.txt` is used.
-- Prompt types persist until changed or the socket disconnects.
+### Integration Points
+- **Audio capture:** Use browser MediaRecorder API or external service
+- **Speech-to-text:** Integrate with Web Speech API, Google Cloud Speech, or similar
+- **Chunking:** Send chunks as they're transcribed (real-time or batched)
 
 ---
 
-### Cropping on Scale
+## Message ID System
 
-When using the `capture` event to define a region for OCR, the system automatically handles coordinate scaling to account for display resolution differences.
+Every AI response includes a `messageId` that can be used with `use_prompt`:
 
-**How it works:**
+- **Screenshot responses:** Include `messageId` in `ai_processing_complete`
+- **Transcription responses:** Include `messageId` in `ai_processing_complete`
+- **Use prompt responses:** Generate new `messageId` for each follow-up
 
-- Mouse clicks are captured in logical screen coordinates (e.g., 1440×900)
-- Screenshots may have different resolutions, especially on Retina/high-DPI displays (e.g., 2880×1800)
-- The system calculates a scale factor by comparing screenshot dimensions to screen dimensions
-- Coordinates are automatically scaled before cropping the image for OCR
+**Usage:** Store `messageId` from responses to enable follow-up processing with different prompt types.
 
-**Example:**
+---
 
-- Screen resolution: 1440×900 (logical)
-- Screenshot resolution: 2880×1800 (2x Retina)
-- Scale factor: 2.0
-- Click at (500, 300) → Cropped at (1000, 600) in screenshot
+## Prompt Types
 
-This ensures accurate region extraction regardless of display scaling or Retina display settings.
+- **`debug`:** Debug code with question, answer, and optional screenshot text
+- **`theory`:** Explain theoretical concepts (question only)
+- **`coding`:** Solve coding problems (question only)
+- **`transcription`:** Default for transcription flow (auto-selected)
 
 ---
 
 ## Error Handling
 
-### REST API Errors
-
-All REST endpoints return appropriate HTTP status codes:
-
+### REST API
 - `200` - Success
 - `400` - Bad Request (invalid input)
-- `500` - Internal Server Error
+- `500` - Server Error
 
-Error responses follow this format:
-
-```json
-{
-  "success": false,
-  "error": "Error message"
-}
-```
-
-### WebSocket Errors
-
-WebSocket errors are emitted via the `error` or `aiprocessing_error` events. The connection remains open unless the error is fatal.
-
----
-
-## Example Usage
-
-### JavaScript/TypeScript WebSocket Client
-
-```javascript
-import io from 'socket.io-client';
-
-const socket = io('http://localhost:4000/data-updates', {
-  transports: ['websocket'],
-});
-
-// Connection events
-socket.on('connected', (data) => {
-  console.log('Connected:', data);
-});
-
-// Trigger region capture (monitor mouse clicks for rectangle)
-socket.emit('capture');
-
-// Set prompt type for AI processing
-socket.emit('set_prompt_type', { promptType: 'coding' });
-
-// Listen for prompt type confirmation
-socket.on('prompt_type_set', (data) => {
-  console.log('Prompt type set:', data.promptType);
-  console.log('Message:', data.message);
-});
-
-// Processing events
-socket.on('screenshot_captured', (data) => {
-  console.log('Screenshot captured:', data.message);
-});
-
-socket.on('ocr_started', (data) => {
-  console.log('OCR started:', data.message);
-});
-
-socket.on('ocr_complete', (data) => {
-  console.log('OCR complete:', data.message);
-});
-
-socket.on('ai_processing_started', (data) => {
-  console.log('AI processing started:', data.message);
-});
-
-socket.on('ai_processing_complete', (data) => {
-  console.log('AI response:', data.response);
-  console.log('Status:', data.message);
-});
-
-socket.on('aiprocessing_error', (error) => {
-  console.error('Processing error:', error.error);
-  console.error('Message:', error.message);
-});
-
-// Error handling
-socket.on('error', (error) => {
-  console.error('Socket error:', error);
-});
-
-socket.on('disconnect', () => {
-  console.log('Disconnected');
-});
-```
-
-### REST API Example (cURL)
-
-```bash
-# Get configuration
-curl http://localhost:4000/api/config/keys
-
-# Save configuration
-curl -X POST http://localhost:4000/api/config/keys \
-  -H "Content-Type: application/json" \
-  -d '{
-    "keys": {
-      "openai": "sk-...",
-      "grok": "gsk_..."
-    },
-    "order": ["openai", "grok"],
-    "enabled": ["openai", "grok"]
-  }'
-
-# Get context state
-curl http://localhost:4000/api/context-state
-
-# Update context state
-curl -X POST http://localhost:4000/api/context-state \
-  -H "Content-Type: application/json" \
-  -d '{"enabled": true}'
-
-# Upload image
-curl -X POST http://localhost:4000/api/upload \
-  -F "image=@screenshot.png"
-
-# Get processed data
-curl http://localhost:4000/api/data
-```
+### WebSocket
+- `aiprocessing_error` - Processing errors
+- `use_prompt_error` - Prompt request errors
+- `error` - Socket errors
+- Connection remains open unless fatal
 
 ---
 
 ## Notes
 
-- WebSocket events are simplified and only include essential information (message and response/error where applicable).
-- Detailed information (timestamps, file paths, durations, etc.) is logged on the server but not included in event payloads.
-- API keys are always masked in responses (shown as `"***"`).
-- Uploaded files are automatically deleted after processing.
-- The WebSocket namespace uses WebSocket transport only (no polling).
-- Processing data is stored in memory and persists until server restart.
-- The server supports multiple AI providers with failover: OpenAI, Groq, and Google Gemini.
+- API keys masked in responses (`"***"`)
+- Uploaded files deleted after processing
+- Data stored in memory (cleared on server restart)
+- Multiple AI providers with failover (OpenAI, Groq, Gemini)
+- Context mode: Previous responses used when enabled
+- Each connection maintains isolated transcription chunks
+- `messageId` enables follow-up processing with different prompts

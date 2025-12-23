@@ -1,478 +1,587 @@
 /**
  * WebSocket handler for /data-updates namespace
  * Handles connection, error, and processing events
+ *
+ * Two main processing flows:
+ * 1. Screenshot Flow:
+ *    - Screenshot captured → OCR extraction → AI processing with 'system' prompt
+ *    - Generates messageId and stores question/answer
+ *
+ * 2. Transcription Flow:
+ *    - Receives text_chunk events → Accumulates chunks → process_transcription event
+ *    - AI processing with 'transcription' prompt
+ *    - Generates messageId and stores question/answer
  */
 import { EventEmitter } from 'events';
 import logger from '../utils/logger.js';
-import createMouse from 'osx-mouse';
-import screenshot from 'screenshot-desktop';
-import path from 'path';
-import fs from 'fs';
-import { CONFIG } from '../config/constants.js';
 import aiService from '../services/ai.service.js';
 import imageProcessingService from '../services/image-processing.service.js';
 
 const log = logger('DataHandler');
+
+// Constants
+const VALID_PROMPT_TYPES = ['debug', 'theory', 'coding'];
+const DEFAULT_PROMPT_TYPE = 'transcription'; // Default for transcription flow
+const SCREENSHOT_PROMPT_TYPE = 'system'; // Default for screenshot flow
 
 class DataHandler extends EventEmitter {
   constructor(io) {
     super();
     this.io = io;
     this.namespace = null;
-    this.storedCoordinates = null; // Store rectangle coordinates from capture events
     this.transcriptionChunks = new Map(); // Store transcription chunks per socket connection
-    this.promptTypes = new Map(); // Store prompt type per socket connection (coding, theory, query, or null)
+    this.selectedPrompts = new Map(); // Store selected prompt type per socket connection
+    this.messageData = new Map(); // Store messageId -> {question, answer, promptType, socketId, timestamp}
+    this.pendingPrompts = new Map(); // Store pending prompts waiting for screenshots: socketId -> {promptType, messageId, screenshotRequired, question, answer}
     this.setupNamespace();
   }
 
   setupNamespace() {
     this.namespace = this.io.of('/data-updates');
-
     log.info('Setting up /data-updates namespace');
 
     this.namespace.on('connection', (socket) => {
-      log.info('Client connected');
-
-      // Emit connected event
-      socket.emit('connected', {
-        socketId: socket.id,
-        connectedAt: new Date().toISOString(),
-        timestamp: Date.now(),
-      });
-
-      // Handle disconnect
-      socket.on('disconnect', (reason) => {
-        log.info('Client disconnected');
-
-        // Clean up transcription chunks for this connection
-        if (this.transcriptionChunks.has(socket.id)) {
-          this.transcriptionChunks.delete(socket.id);
-          log.info('Cleaned up transcription chunks for disconnected socket', {
-            socketId: socket.id,
-          });
-        }
-
-        // Clean up prompt type for this connection
-        if (this.promptTypes.has(socket.id)) {
-          this.promptTypes.delete(socket.id);
-          log.info('Cleaned up prompt type for disconnected socket', {
-            socketId: socket.id,
-          });
-        }
-
-        socket.emit('connection_status', {
-          status: 'disconnected',
-          socketId: socket.id,
-          reason,
-          timestamp: Date.now(),
-        });
-      });
-
-      // Handle errors
-      socket.on('error', (error) => {
-        const errorMessage = error.message || 'Unknown error';
-        log.error(`Socket error: ${errorMessage}`);
-
-        // Emit error event to client
-        socket.emit('error', {
-          socketId: socket.id,
-          error: errorMessage,
-          timestamp: Date.now(),
-        });
-      });
-
-      // Handle capture event - monitor system mouse clicks for rectangle
-      socket.on('capture', () => {
-        log.info(
-          'Capture event received, monitoring system mouse for 2 clicks (top-left and bottom-right)',
-        );
-
-        let clickCount = 0;
-        const maxClicks = 2;
-        let mouseStream = null;
-        const clicks = []; // Store the two clicks
-
-        // Helper function to take screenshot and save to monitored directory
-        const takeScreenshot = async () => {
-          try {
-            // Ensure screenshots directory exists
-            if (!fs.existsSync(CONFIG.SCREENSHOTS_PATH)) {
-              fs.mkdirSync(CONFIG.SCREENSHOTS_PATH, { recursive: true });
-            }
-
-            // Generate timestamped filename
-            const timestamp = Date.now();
-            const filename = `screenshot_${timestamp}.png`;
-            const filePath = path.join(CONFIG.SCREENSHOTS_PATH, filename);
-
-            // Take screenshot
-            const imgBuffer = await screenshot();
-
-            // Save to monitored directory
-            fs.writeFileSync(filePath, imgBuffer);
-
-            log.info('Screenshot saved', {
-              filename,
-              filePath,
-            });
-
-            return filePath;
-          } catch (error) {
-            log.error('Error taking screenshot', error);
-            throw error;
-          }
-        };
-
-        try {
-          // Start monitoring mouse clicks
-          mouseStream = createMouse();
-
-          const clickHandler = (x, y) => {
-            try {
-              clickCount++;
-              clicks.push({ x, y }); // Store the click
-              log.info(`Mouse Click ${clickCount}: x=${x}, y=${y}`, {
-                clickNumber: clickCount,
-                position:
-                  clickCount === 1
-                    ? 'First (should be top-left)'
-                    : 'Second (should be bottom-right)',
-              });
-
-              if (clickCount >= maxClicks) {
-                // Calculate rectangle corners from the two clicks
-                // Normalize to handle clicks in any order
-                // macOS coordinate system: (0,0) is top-left, Y increases downward
-                const click1 = clicks[0];
-                const click2 = clicks[1];
-                const minX = Math.min(click1.x, click2.x);
-                const maxX = Math.max(click1.x, click2.x);
-                const minY = Math.min(click1.y, click2.y);
-                const maxY = Math.max(click1.y, click2.y);
-
-                log.info('Click analysis', {
-                  click1: { x: click1.x, y: click1.y },
-                  click2: { x: click2.x, y: click2.y },
-                  calculatedBounds: { minX, maxX, minY, maxY },
-                });
-
-                // Define rectangle corners
-                const topLeft = { x: minX, y: minY };
-                const bottomRight = { x: maxX, y: maxY };
-                const topRight = {
-                  x: maxX, // Same x as bottom-right
-                  y: minY, // Same y as top-left
-                };
-                const bottomLeft = {
-                  x: minX, // Same x as top-left
-                  y: maxY, // Same y as bottom-right
-                };
-
-                // Calculate rectangle dimensions
-                const width = maxX - minX;
-                const height = maxY - minY;
-                const area = width * height;
-
-                // Log all four corners
-                log.info('=== Rectangle Corners ===');
-                log.info(`Top-Left:     x=${topLeft.x}, y=${topLeft.y}`);
-                log.info(`Top-Right:    x=${topRight.x}, y=${topRight.y}`);
-                log.info(`Bottom-Left:  x=${bottomLeft.x}, y=${bottomLeft.y}`);
-                log.info(
-                  `Bottom-Right: x=${bottomRight.x}, y=${bottomRight.y}`,
-                );
-                log.info(
-                  `Rectangle: width=${width}, height=${height}, area=${area}`,
-                );
-
-                // Store coordinates for OCR region extraction (overwrite if exists)
-                this.storedCoordinates = {
-                  x: minX,
-                  y: minY,
-                  width: width,
-                  height: height,
-                  topLeft,
-                  topRight,
-                  bottomLeft,
-                  bottomRight,
-                };
-                log.info('Coordinates stored for next screenshot OCR');
-
-                // Take screenshot automatically after coordinates are stored
-                takeScreenshot()
-                  .then(() => {
-                    log.info(
-                      'Screenshot taken and saved, monitor will process it',
-                    );
-                  })
-                  .catch((error) => {
-                    log.error('Error taking screenshot', error);
-                  })
-                  .finally(() => {
-                    // Defer cleanup to avoid issues with destroying from within event handler
-                    setImmediate(() => {
-                      cleanupMouseStream();
-                      log.info('Finished capturing rectangle');
-                    });
-                  });
-              }
-            } catch (error) {
-              log.error(`Error in click handler: ${error.message}`);
-            }
-          };
-
-          const cleanupMouseStream = () => {
-            try {
-              if (mouseStream) {
-                // Remove the event listener first to stop processing clicks
-                mouseStream.removeListener('left-down', clickHandler);
-
-                // Try to destroy, but if it fails, just unref to allow process to continue
-                try {
-                  if (typeof mouseStream.destroy === 'function') {
-                    mouseStream.destroy();
-                  }
-                } catch (destroyError) {
-                  log.warn(
-                    `Could not destroy mouse stream, using unref instead: ${destroyError.message}`,
-                  );
-                  if (typeof mouseStream.unref === 'function') {
-                    mouseStream.unref();
-                  }
-                }
-                mouseStream = null;
-              }
-            } catch (error) {
-              log.error(`Error cleaning up mouse stream: ${error.message}`);
-            }
-          };
-
-          // Listen for left mouse button down events (clicks)
-          // osx-mouse emits: 'left-down', 'left-up', 'right-down', 'right-up', 'move', etc.
-          mouseStream.on('left-down', clickHandler);
-
-          // Handle cleanup on disconnect
-          socket.once('disconnect', () => {
-            cleanupMouseStream();
-          });
-        } catch (error) {
-          log.error(`Error setting up mouse monitoring: ${error.message}`);
-          socket.emit('error', {
-            socketId: socket.id,
-            error: `Failed to start mouse monitoring: ${error.message}`,
-            timestamp: Date.now(),
-          });
-        }
-      });
-
-      // Handle transcription event - accumulate text chunks
-      socket.on('transcription', async (data) => {
-        const { textChunk } = data || {};
-        console.log('data', data);
-        console.log('textChunk', textChunk);
-        if (!textChunk || typeof textChunk !== 'string') {
-          log.warn('Invalid transcription chunk received', {
-            socketId: socket.id,
-            data,
-          });
-          return;
-        }
-
-        // Initialize array if it doesn't exist for this socket
-        if (!this.transcriptionChunks.has(socket.id)) {
-          this.transcriptionChunks.set(socket.id, []);
-        }
-
-        // Add chunk to the array
-        const chunks = this.transcriptionChunks.get(socket.id);
-        chunks.push(textChunk);
-
-        log.debug('Transcription chunk received', {
-          socketId: socket.id,
-          chunkLength: textChunk.length,
-          totalChunks: chunks.length,
-        });
-      });
-
-      // Handle set_prompt_type event - set the prompt type for this socket
-      socket.on('set_prompt_type', (data) => {
-        const { promptType } = data || {};
-
-        // Validate prompt type
-        const validTypes = ['coding', 'theory', 'query', null, undefined, ''];
-        if (promptType && !validTypes.includes(promptType.toLowerCase())) {
-          log.warn('Invalid prompt type received', {
-            socketId: socket.id,
-            promptType,
-            validTypes: ['coding', 'theory', 'query', null],
-          });
-          socket.emit('error', {
-            socketId: socket.id,
-            error: `Invalid prompt type: ${promptType}. Valid types: coding, theory, query, or null/empty to use default`,
-            timestamp: Date.now(),
-          });
-          return;
-        }
-
-        // Store prompt type for this socket (null or empty means use default/system prompt)
-        const normalizedType =
-          promptType && promptType.trim() ? promptType.toLowerCase() : null;
-
-        this.promptTypes.set(socket.id, normalizedType);
-
-        log.info('Prompt type set', {
-          socketId: socket.id,
-          promptType: normalizedType || 'default (system-prompt)',
-        });
-
-        socket.emit('prompt_type_set', {
-          socketId: socket.id,
-          promptType: normalizedType,
-          message: `Prompt type set to: ${
-            normalizedType || 'default (system-prompt)'
-          }`,
-          timestamp: Date.now(),
-        });
-      });
-
-      // Handle process_transcription event - process accumulated transcription
-      socket.on('process_transcription', async () => {
-        const chunks = this.transcriptionChunks.get(socket.id);
-
-        if (!chunks || chunks.length === 0) {
-          log.warn('No transcription chunks found for processing', {
-            socketId: socket.id,
-          });
-          socket.emit('aiprocessing_error', {
-            error: 'No transcription data available',
-            message: 'Error during transcription processing',
-          });
-          return;
-        }
-
-        try {
-          // Combine all chunks into full transcription
-          const fullTranscription = chunks.join(' ');
-
-          log.info('Processing transcription', {
-            socketId: socket.id,
-            chunkCount: chunks.length,
-            transcriptionLength: fullTranscription.length,
-          });
-
-          // Emit AI processing started event
-          this.emitAIStarted('transcription', fullTranscription, false);
-
-          // Get prompt type for this socket
-          const promptType = this.getPromptType(socket.id);
-          if (promptType) {
-            log.info('Using custom prompt type for transcription processing', {
-              socketId: socket.id,
-              promptType,
-            });
-          }
-
-          const aiStartTime = Date.now();
-
-          // Call AI service to process transcription
-          const aiResponse = await aiService.askGptTranscription(
-            fullTranscription,
-            promptType,
-          );
-
-          const aiDuration = Date.now() - aiStartTime;
-          const provider = aiResponse.provider || 'unknown';
-          const responseContent = aiResponse.message.content;
-
-          // Store the AI response in imageProcessingService
-          const processedItem = {
-            filename: 'transcription',
-            timestamp: new Date().toLocaleString(),
-            extractedText:
-              fullTranscription.substring(0, 500) +
-              (fullTranscription.length > 500 ? '...' : ''),
-            gptResponse:
-              responseContent.substring(0, 1000) +
-              (responseContent.length > 1000 ? '...' : ''),
-            usedContext: false,
-            type: 'transcription',
-          };
-          imageProcessingService.addProcessedData(processedItem);
-
-          // Update last response for potential context use
-          imageProcessingService.setLastResponse(responseContent);
-
-          // Clear transcription chunks after processing (don't store transcription)
-          this.transcriptionChunks.delete(socket.id);
-
-          log.info('Transcription processing completed successfully', {
-            socketId: socket.id,
-            provider,
-            aiDuration: `${aiDuration}ms`,
-            responseLength: responseContent.length,
-          });
-
-          // Emit AI processing complete event
-          this.emitAIComplete(
-            'transcription',
-            responseContent,
-            provider,
-            aiDuration,
-            false,
-          );
-        } catch (err) {
-          log.error('Error processing transcription', {
-            socketId: socket.id,
-            error: err.message,
-            stack: err.stack,
-          });
-
-          // Clear chunks even on error (don't store transcription)
-          this.transcriptionChunks.delete(socket.id);
-
-          // Emit processing error event
-          this.emitProcessingError('transcription', 'transcription', err);
-        }
-      });
+      this.handleConnection(socket);
     });
 
     log.info('Namespace setup complete');
   }
 
   /**
-   * Get stored coordinates for OCR region extraction
-   * Returns null if no coordinates are stored
+   * Handle new socket connection
    */
-  getStoredCoordinates() {
-    return this.storedCoordinates;
+  handleConnection(socket) {
+    log.info('Client connected', { socketId: socket.id });
+
+    // Emit connected event
+    this.emitToSocket(socket, 'connected', {
+      socketId: socket.id,
+      connectedAt: new Date().toISOString(),
+      timestamp: Date.now(),
+    });
+
+    // Register event handlers
+    socket.on('disconnect', (reason) => this.handleDisconnect(socket, reason));
+    socket.on('error', (error) => this.handleError(socket, error));
+    socket.on('use_prompt', (data) => this.handleUsePrompt(socket, data));
+    socket.on('transcription', (data) =>
+      this.handleTranscription(socket, data),
+    );
+    socket.on('process_transcription', () =>
+      this.handleProcessTranscription(socket),
+    );
   }
 
   /**
-   * Clear stored coordinates
+   * Handle socket disconnect
    */
-  clearStoredCoordinates() {
-    this.storedCoordinates = null;
+  handleDisconnect(socket, reason) {
+    log.info('Client disconnected', { socketId: socket.id, reason });
+
+    // Clean up socket-specific data
+    this.cleanupSocketData(socket.id);
+
+    this.emitToSocket(socket, 'connection_status', {
+      status: 'disconnected',
+      socketId: socket.id,
+      reason,
+      timestamp: Date.now(),
+    });
   }
 
   /**
-   * Get prompt type for a specific socket
-   * Returns null if no prompt type is set (will use default/system prompt)
+   * Clean up all data associated with a socket
    */
-  getPromptType(socketId) {
-    return this.promptTypes.get(socketId) || null;
+  cleanupSocketData(socketId) {
+    const cleanupActions = [
+      {
+        map: this.transcriptionChunks,
+        name: 'transcription chunks',
+      },
+      {
+        map: this.selectedPrompts,
+        name: 'selected prompt',
+      },
+      {
+        map: this.pendingPrompts,
+        name: 'pending prompt',
+      },
+    ];
+
+    cleanupActions.forEach(({ map, name }) => {
+      if (map.has(socketId)) {
+        map.delete(socketId);
+        log.info(`Cleaned up ${name} for disconnected socket`, { socketId });
+      }
+    });
   }
 
   /**
-   * Get prompt type for any active socket (used when socket ID is not available)
+   * Handle socket errors
+   */
+  handleError(socket, error) {
+    const errorMessage = error.message || 'Unknown error';
+    log.error('Socket error', { socketId: socket.id, error: errorMessage });
+
+    this.emitToSocket(socket, 'error', {
+      socketId: socket.id,
+      error: errorMessage,
+      timestamp: Date.now(),
+    });
+  }
+
+  /**
+   * Handle use_prompt event
+   */
+  async handleUsePrompt(socket, data) {
+    const { promptType, screenshotRequired = false, messageId } = data || {};
+
+    // Validate input
+    const validationError = this.validateUsePromptInput(
+      socket,
+      promptType,
+      messageId,
+    );
+    if (validationError) {
+      return; // Error already emitted
+    }
+
+    // Get stored message data
+    const messageData = this.messageData.get(messageId);
+    if (!messageData) {
+      log.warn('Message data not found for messageId', {
+        socketId: socket.id,
+        messageId,
+      });
+      this.emitToSocket(socket, 'use_prompt_error', {
+        error: 'Message data not found for the provided messageId',
+        messageId,
+      });
+      return;
+    }
+
+    const { question, answer } = messageData;
+
+    // Handle screenshot required case
+    if (screenshotRequired) {
+      this.handleScreenshotRequired(socket, {
+        promptType,
+        messageId,
+        question,
+        answer,
+      });
+      return;
+    }
+
+    // Process immediately without screenshot
+    this.emitToSocket(socket, 'use_prompt_set', {
+      promptType,
+      messageId,
+      screenshotRequired: false,
+      message: `Processing with ${promptType} prompt`,
+      timestamp: Date.now(),
+    });
+
+    await this.processPromptWithQuestion(
+      socket,
+      promptType,
+      messageId,
+      question,
+      answer,
+      null, // No screenshot text
+    );
+  }
+
+  /**
+   * Validate use_prompt input
+   */
+  validateUsePromptInput(socket, promptType, messageId) {
+    // Validate prompt type
+    if (!promptType || !VALID_PROMPT_TYPES.includes(promptType)) {
+      log.warn('Invalid prompt type received', {
+        socketId: socket.id,
+        promptType,
+        validTypes: VALID_PROMPT_TYPES,
+      });
+      this.emitToSocket(socket, 'use_prompt_error', {
+        error: `Invalid prompt type. Must be one of: ${VALID_PROMPT_TYPES.join(
+          ', ',
+        )}`,
+        received: promptType,
+      });
+      return true; // Error occurred
+    }
+
+    // Validate messageId
+    if (!messageId) {
+      log.warn('Missing messageId in use_prompt', { socketId: socket.id });
+      this.emitToSocket(socket, 'use_prompt_error', {
+        error: 'messageId is required',
+      });
+      return true; // Error occurred
+    }
+
+    return false; // No error
+  }
+
+  /**
+   * Handle screenshot required case
+   */
+  handleScreenshotRequired(
+    socket,
+    { promptType, messageId, question, answer },
+  ) {
+    log.info('Screenshot required, waiting for screenshot', {
+      socketId: socket.id,
+      messageId,
+      promptType,
+    });
+
+    // Store pending prompt
+    this.pendingPrompts.set(socket.id, {
+      promptType,
+      messageId,
+      screenshotRequired: true,
+      question,
+      answer,
+    });
+
+    this.emitToSocket(socket, 'use_prompt_set', {
+      promptType,
+      messageId,
+      screenshotRequired: true,
+      message: `Waiting for screenshot to process with ${promptType} prompt`,
+      timestamp: Date.now(),
+    });
+  }
+
+  /**
+   * Handle transcription chunk event
+   */
+  handleTranscription(socket, data) {
+    const { textChunk } = data || {};
+
+    if (!textChunk || typeof textChunk !== 'string') {
+      log.warn('Invalid transcription chunk received', {
+        socketId: socket.id,
+        data,
+      });
+      return;
+    }
+
+    // Initialize array if it doesn't exist for this socket
+    if (!this.transcriptionChunks.has(socket.id)) {
+      this.transcriptionChunks.set(socket.id, []);
+    }
+
+    // Add chunk to the array
+    const chunks = this.transcriptionChunks.get(socket.id);
+    chunks.push(textChunk);
+
+    log.debug('Transcription chunk received', {
+      socketId: socket.id,
+      chunkLength: textChunk.length,
+      totalChunks: chunks.length,
+    });
+  }
+
+  /**
+   * Handle process_transcription event (Transcription Flow)
+   * Processes accumulated transcription chunks with 'transcription' prompt
+   * Generates messageId and stores question/answer for use_prompt functionality
+   */
+  async handleProcessTranscription(socket) {
+    const chunks = this.transcriptionChunks.get(socket.id);
+
+    if (!chunks || chunks.length === 0) {
+      log.warn('No transcription chunks found for processing', {
+        socketId: socket.id,
+      });
+      this.emitToSocket(socket, 'aiprocessing_error', {
+        error: 'No transcription data available',
+        message: 'Error during transcription processing',
+      });
+      return;
+    }
+
+    try {
+      // Combine all chunks into full transcription
+      const fullTranscription = chunks.join(' ');
+
+      log.info('Processing transcription', {
+        socketId: socket.id,
+        chunkCount: chunks.length,
+        transcriptionLength: fullTranscription.length,
+      });
+
+      // Emit AI processing started event
+      this.emitAIStarted('transcription', fullTranscription, false);
+
+      const aiStartTime = Date.now();
+
+      // Get selected prompt type for this socket (default to 'transcription')
+      const promptType =
+        this.selectedPrompts.get(socket.id) || DEFAULT_PROMPT_TYPE;
+
+      // Call AI service to process transcription
+      const aiResponse = await aiService.askGptTranscription(
+        fullTranscription,
+        promptType,
+      );
+
+      const aiDuration = Date.now() - aiStartTime;
+      const provider = aiResponse.provider || 'unknown';
+      const responseContent = aiResponse.message.content;
+
+      // Generate messageId for this transcription processing
+      const messageId = this.generateMessageId();
+
+      // Store question (transcription text) and answer (AI response) with messageId
+      this.storeMessageData(
+        messageId,
+        fullTranscription, // question = transcription text
+        responseContent, // answer = AI response
+        promptType, // 'transcription' prompt type
+        socket.id,
+      );
+
+      // Store the AI response in imageProcessingService
+      const processedItem = {
+        filename: 'transcription',
+        timestamp: new Date().toLocaleString(),
+        extractedText:
+          fullTranscription.substring(0, 500) +
+          (fullTranscription.length > 500 ? '...' : ''),
+        gptResponse:
+          responseContent.substring(0, 1000) +
+          (responseContent.length > 1000 ? '...' : ''),
+        usedContext: false,
+        type: 'transcription',
+      };
+      imageProcessingService.addProcessedData(processedItem);
+
+      // Update last response for potential context use
+      imageProcessingService.setLastResponse(responseContent);
+
+      // Clear transcription chunks after processing
+      this.transcriptionChunks.delete(socket.id);
+
+      log.info('Transcription processing completed successfully', {
+        socketId: socket.id,
+        messageId,
+        provider,
+        aiDuration: `${aiDuration}ms`,
+        responseLength: responseContent.length,
+      });
+
+      // Emit AI processing complete event with messageId
+      this.emitAIComplete(
+        'transcription',
+        responseContent,
+        provider,
+        aiDuration,
+        false,
+        messageId,
+      );
+    } catch (err) {
+      log.error('Error processing transcription', {
+        socketId: socket.id,
+        error: err.message,
+        stack: err.stack,
+      });
+
+      // Clear chunks even on error
+      this.transcriptionChunks.delete(socket.id);
+
+      // Emit processing error event
+      this.emitProcessingError('transcription', 'transcription', err);
+    }
+  }
+
+  /**
+   * Process prompt with question and optional screenshot text
+   * Generates a new messageId for the response and stores question/answer
+   */
+  async processPromptWithQuestion(
+    socket,
+    promptType,
+    sourceMessageId,
+    question,
+    answer,
+    screenshotText,
+  ) {
+    try {
+      const socketId = socket?.id || 'unknown';
+      log.info('Processing prompt with question', {
+        socketId,
+        promptType,
+        sourceMessageId,
+        hasScreenshotText: !!screenshotText,
+      });
+
+      // Emit AI processing started event
+      this.emitAIStarted('prompt', question, false);
+
+      const aiStartTime = Date.now();
+
+      // Build prompt text based on prompt type
+      const promptText = this.buildPromptText(
+        promptType,
+        question,
+        answer,
+        screenshotText,
+      );
+
+      // Call AI service with appropriate prompt type
+      const gptResponse = await aiService.askGpt(promptText, promptType);
+
+      const aiDuration = Date.now() - aiStartTime;
+      const provider = gptResponse.provider || 'unknown';
+      const responseContent = gptResponse.message.content;
+
+      // Generate NEW messageId for this response
+      const newMessageId = this.generateMessageId();
+
+      // Store question and answer with the NEW messageId
+      this.storeMessageData(
+        newMessageId,
+        question, // Store the question from source
+        responseContent,
+        promptType,
+        socketId,
+      );
+
+      log.info('Prompt processing completed successfully', {
+        socketId,
+        sourceMessageId,
+        newMessageId,
+        promptType,
+        provider,
+        aiDuration: `${aiDuration}ms`,
+        responseLength: responseContent.length,
+      });
+
+      // Emit AI processing complete event with NEW messageId
+      this.emitAIComplete(
+        'prompt',
+        responseContent,
+        provider,
+        aiDuration,
+        false,
+        newMessageId,
+      );
+    } catch (err) {
+      log.error('Error processing prompt with question', {
+        socketId: socket?.id || 'unknown',
+        sourceMessageId,
+        promptType,
+        error: err.message,
+        stack: err.stack,
+      });
+
+      // Emit processing error event
+      this.emitProcessingError('prompt', 'prompt', err);
+    }
+  }
+
+  /**
+   * Build prompt text based on prompt type
+   */
+  buildPromptText(promptType, question, answer, screenshotText) {
+    switch (promptType) {
+      case 'debug':
+        // For debug: pass question, answer, and screenshot text if available
+        let promptText = `Question: ${question}\n\nAnswer: ${answer}`;
+        if (screenshotText) {
+          promptText += `\n\nScreenshot text:\n${screenshotText}`;
+        }
+        return promptText;
+
+      case 'theory':
+      case 'coding':
+        // For theory/coding: pass just the question
+        return question;
+
+      default:
+        throw new Error(`Unknown prompt type: ${promptType}`);
+    }
+  }
+
+  /**
+   * Generate a unique messageId
+   */
+  generateMessageId() {
+    return `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  // ==================== Message Data Management ====================
+
+  /**
+   * Store message data (question and answer) with messageId
+   */
+  storeMessageData(messageId, question, answer, promptType, socketId) {
+    this.messageData.set(messageId, {
+      question,
+      answer,
+      promptType,
+      socketId,
+      timestamp: Date.now(),
+    });
+    log.info('Message data stored', {
+      messageId,
+      questionLength: question?.length || 0,
+      answerLength: answer?.length || 0,
+      promptType,
+      socketId,
+    });
+  }
+
+  /**
+   * Get message data by messageId
+   */
+  getMessageData(messageId) {
+    return this.messageData.get(messageId) || null;
+  }
+
+  // ==================== Pending Prompts Management ====================
+
+  /**
+   * Get pending prompt for a socket
+   */
+  getPendingPrompt(socketId) {
+    return this.pendingPrompts.get(socketId) || null;
+  }
+
+  /**
+   * Clear pending prompt for a socket
+   */
+  clearPendingPrompt(socketId) {
+    this.pendingPrompts.delete(socketId);
+  }
+
+  // ==================== Utility Methods ====================
+
+  /**
+   * Get selected prompt type from any active socket
    * Returns the first available prompt type, or null if none set
    */
-  getAnyPromptType() {
-    if (this.promptTypes.size === 0) {
+  getSelectedPromptType() {
+    if (this.selectedPrompts.size === 0) {
       return null;
     }
-    // Return the first prompt type found
-    return this.promptTypes.values().next().value || null;
+    return this.selectedPrompts.values().next().value;
   }
+
+  /**
+   * Emit event to a specific socket
+   */
+  emitToSocket(socket, event, data) {
+    if (socket && socket.emit) {
+      socket.emit(event, data);
+    }
+  }
+
+  // ==================== Event Emitters ====================
 
   /**
    * Emit screenshot captured event
@@ -483,14 +592,10 @@ class DataHandler extends EventEmitter {
       return;
     }
 
-    const message = `Screenshot captured: ${filename}`;
-    const hasCoordinates = this.storedCoordinates !== null;
-
-    log.info(`Screenshot captured: ${filename}`, {
-      hasCoordinates,
+    log.info('Screenshot captured', { filename });
+    this.namespace.emit('screenshot_captured', {
+      message: `Screenshot captured: ${filename}`,
     });
-
-    this.namespace.emit('screenshot_captured', { message });
   }
 
   /**
@@ -502,11 +607,8 @@ class DataHandler extends EventEmitter {
       return;
     }
 
-    const message = 'OCR started';
-
     log.info('OCR started');
-
-    this.namespace.emit('ocr_started', { message });
+    this.namespace.emit('ocr_started', { message: 'OCR started' });
   }
 
   /**
@@ -518,11 +620,8 @@ class DataHandler extends EventEmitter {
       return;
     }
 
-    const message = 'OCR completed';
-
-    log.info(`OCR completed: ${extractedText}`);
-
-    this.namespace.emit('ocr_complete', { message });
+    log.info('OCR completed', { extractedTextLength: extractedText?.length });
+    this.namespace.emit('ocr_complete', { message: 'OCR completed' });
   }
 
   /**
@@ -534,30 +633,43 @@ class DataHandler extends EventEmitter {
       return;
     }
 
-    const message = 'AI processing started';
-
     log.info('AI processing started');
-
-    this.namespace.emit('ai_processing_started', { message });
+    this.namespace.emit('ai_processing_started', {
+      message: 'AI processing started',
+    });
   }
 
   /**
    * Emit AI processing completed event
    */
-  emitAIComplete(filename, response, provider, duration, useContext) {
+  emitAIComplete(
+    filename,
+    response,
+    provider,
+    duration,
+    useContext,
+    messageId = null,
+  ) {
     if (!this.namespace) {
       log.warn('Namespace not initialized, skipping emit');
       return;
     }
 
-    const message = 'AI processing completed';
-
-    log.info(`AI processing completed: ${response}`);
-
-    this.namespace.emit('ai_processing_complete', {
-      response,
-      message,
+    log.info('AI processing completed', {
+      messageId,
+      responseLength: response?.length,
     });
+
+    const eventData = {
+      response,
+      message: 'AI processing completed',
+    };
+
+    if (messageId) {
+      eventData.messageId = messageId;
+    }
+
+    this.namespace.emit('ai_processing_complete', eventData);
   }
 
   /**
@@ -570,13 +682,11 @@ class DataHandler extends EventEmitter {
     }
 
     const errorMessage = error.message || 'Unknown error';
-    const message = `Error during ${stage} processing`;
-
-    log.error(`Error during ${stage} processing: ${errorMessage}`);
+    log.error(`Error during ${stage} processing`, { error: errorMessage });
 
     this.namespace.emit('aiprocessing_error', {
       error: errorMessage,
-      message,
+      message: `Error during ${stage} processing`,
     });
   }
 }

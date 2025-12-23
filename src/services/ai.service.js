@@ -10,7 +10,12 @@ dotenv.config();
 
 const log = logger('AIService');
 
-const CONFIG_FILE_PATH = path.join(process.cwd(), 'config', 'api-keys.json');
+const CONFIG_FILE_PATH = path.join(
+  process.cwd(),
+  'backend',
+  'config',
+  'api-keys.json',
+);
 
 class AIService {
   constructor() {
@@ -270,27 +275,43 @@ class AIService {
     );
   }
 
-  readPromptFromFile() {
+  readPromptFromFile(promptType = 'system') {
     try {
-      const promptPath = path.join(
-        process.cwd(),
-        'prompts',
-        'system-prompt.txt',
-      );
+      // Map prompt types to filenames
+      const promptFileMap = {
+        system: 'system-prompt.txt',
+        context: 'context-prompt.txt',
+        transcription: 'transcription-prompt.txt',
+        debug: 'debug-prompt.txt',
+        coding: 'coding-prompt.txt',
+        theory: 'theory-prompt.txt',
+      };
+
+      const filename = promptFileMap[promptType] || 'system-prompt.txt';
+      const promptPath = path.join(process.cwd(), 'prompts', filename);
       return fs.readFileSync(promptPath, 'utf8').trim();
     } catch (err) {
-      log.warn('Could not read prompt file, using default prompt');
+      log.warn(
+        `Could not read prompt file (${promptType}), using default prompt`,
+      );
       return 'Analyze this screenshot text and provide insights';
     }
   }
 
-  readContextPromptFromFile(context) {
+  readContextPromptFromFile(context, promptType = 'context') {
     try {
-      const promptPath = path.join(
-        process.cwd(),
-        'prompts',
-        'context-prompt.txt',
-      );
+      // Map prompt types to filenames
+      const promptFileMap = {
+        system: 'system-prompt.txt',
+        context: 'context-prompt.txt',
+        transcription: 'transcription-prompt.txt',
+        debug: 'debug-prompt.txt',
+        coding: 'coding-prompt.txt',
+        theory: 'theory-prompt.txt',
+      };
+
+      const filename = promptFileMap[promptType] || 'context-prompt.txt';
+      const promptPath = path.join(process.cwd(), 'prompts', filename);
       let contextPrompt = fs.readFileSync(promptPath, 'utf8').trim();
       contextPrompt = contextPrompt.replace(
         '{CONTEXT}',
@@ -298,90 +319,39 @@ class AIService {
       );
       return contextPrompt;
     } catch (err) {
-      log.warn('Could not read context prompt file, using default prompt');
+      log.warn(
+        `Could not read context prompt file (${promptType}), using default prompt`,
+      );
       return `Previous context:\n${context}\n\nAnalyze this screenshot text and provide insights`;
     }
   }
 
-  readTranscriptionPromptFromFile() {
+  readTranscriptionPromptFromFile(promptType = 'transcription') {
     try {
-      const promptPath = path.join(
-        process.cwd(),
-        'prompts',
-        'transcription-prompt.txt',
-      );
+      // Map prompt types to filenames
+      const promptFileMap = {
+        system: 'system-prompt.txt',
+        context: 'context-prompt.txt',
+        transcription: 'transcription-prompt.txt',
+        debug: 'debug-prompt.txt',
+        coding: 'coding-prompt.txt',
+        theory: 'theory-prompt.txt',
+      };
+
+      const filename = promptFileMap[promptType] || 'transcription-prompt.txt';
+      const promptPath = path.join(process.cwd(), 'prompts', filename);
       return fs.readFileSync(promptPath, 'utf8').trim();
     } catch (err) {
       log.warn(
-        'Could not read transcription prompt file, using default prompt',
+        `Could not read transcription prompt file (${promptType}), using default prompt`,
       );
       return 'Identify the coding interview question from this transcription and provide a complete solution.';
     }
   }
 
-  readCodingPromptFromFile() {
-    try {
-      const promptPath = path.join(
-        process.cwd(),
-        'prompts',
-        'coding-prompt.txt',
-      );
-      return fs.readFileSync(promptPath, 'utf8').trim();
-    } catch (err) {
-      log.warn('Could not read coding prompt file, using default prompt');
-      return 'You are a senior FAANG engineer. Extract the coding problem from the text and provide a complete solution with code.';
-    }
-  }
-
-  readTheoryPromptFromFile() {
-    try {
-      const promptPath = path.join(
-        process.cwd(),
-        'prompts',
-        'theory-prompt.txt',
-      );
-      return fs.readFileSync(promptPath, 'utf8').trim();
-    } catch (err) {
-      log.warn('Could not read theory prompt file, using default prompt');
-      return 'You are a senior FAANG engineer. Extract the theoretical question from the text and provide a comprehensive answer.';
-    }
-  }
-
-  readQueryPromptFromFile() {
-    try {
-      const promptPath = path.join(
-        process.cwd(),
-        'prompts',
-        'query-prompt.txt',
-      );
-      return fs.readFileSync(promptPath, 'utf8').trim();
-    } catch (err) {
-      log.warn('Could not read query prompt file, using default prompt');
-      return 'You are a senior FAANG engineer. Extract the database query question from the text and provide SQL or MongoDB queries to solve it.';
-    }
-  }
-
-  getPromptByType(promptType) {
-    if (!promptType) {
-      return this.readPromptFromFile();
-    }
-
-    switch (promptType.toLowerCase()) {
-      case 'coding':
-        return this.readCodingPromptFromFile();
-      case 'theory':
-        return this.readTheoryPromptFromFile();
-      case 'query':
-        return this.readQueryPromptFromFile();
-      default:
-        log.warn(`Unknown prompt type: ${promptType}, using system prompt`);
-        return this.readPromptFromFile();
-    }
-  }
-
   async askGpt(text, promptType = null) {
     this.reloadConfig();
-    const systemPrompt = this.getPromptByType(promptType);
+    const systemPrompt = this.readPromptFromFile(promptType || 'system');
 
     const messages = [
       {
@@ -402,18 +372,10 @@ class AIService {
 
   async askGptWithContext(text, previousResponse, promptType = null) {
     this.reloadConfig();
-    // For context mode, we still use context prompt but can override with specific prompt type
-    let systemPrompt;
-    if (promptType) {
-      // Use the specific prompt type even in context mode
-      systemPrompt = this.getPromptByType(promptType);
-      // Prepend context information if available
-      if (previousResponse) {
-        systemPrompt = `Previous context:\n${previousResponse}\n\n${systemPrompt}`;
-      }
-    } else {
-      systemPrompt = this.readContextPromptFromFile(previousResponse);
-    }
+    const systemPrompt = this.readContextPromptFromFile(
+      previousResponse,
+      promptType || 'context',
+    );
 
     const messages = [
       {
@@ -470,10 +432,9 @@ Question: ${question}`;
 
   async askGptTranscription(transcriptionText, promptType = null) {
     this.reloadConfig();
-    // If prompt type is specified, use it; otherwise use transcription prompt
-    const systemPrompt = promptType
-      ? this.getPromptByType(promptType)
-      : this.readTranscriptionPromptFromFile();
+    const systemPrompt = this.readTranscriptionPromptFromFile(
+      promptType || 'transcription',
+    );
 
     const messages = [
       {
